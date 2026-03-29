@@ -9,24 +9,39 @@ import asyncio
 from generated import data_pb2, data_pb2_grpc
 from app.grpc_services.data_grpc_service import DataGrpcService
 from app.services.data_service import DataService
-from app.config import get_settings
+from app.config import get_settings, Settings, XTQuantMode, XTQuantConfig
+from app.services.subscription_manager import SubscriptionManager
+import app.dependencies as _deps
 
 
 @pytest.fixture
-def settings():
-    """获取配置"""
-    return get_settings()
+def mock_settings():
+    """强制使用Mock模式的配置（不连接xtdata）"""
+    s = get_settings().model_copy(deep=True)
+    s.xtquant = s.xtquant.model_copy(update={"mode": XTQuantMode.MOCK})
+    return s
 
 
 @pytest.fixture
-def data_service(settings):
+def mock_subscription_manager(mock_settings):
+    """创建Mock模式的SubscriptionManager，并注入为全局单例"""
+    manager = SubscriptionManager(mock_settings)
+    original = _deps._subscription_manager_instance
+    _deps._subscription_manager_instance = manager
+    yield manager
+    _deps._subscription_manager_instance = original
+    manager.shutdown()
+
+
+@pytest.fixture
+def data_service(mock_settings):
     """创建数据服务实例"""
-    return DataService(settings)
+    return DataService(mock_settings)
 
 
 @pytest.fixture
-def grpc_service(data_service):
-    """创建gRPC服务实例"""
+def grpc_service(data_service, mock_subscription_manager):
+    """创建gRPC服务实例（确保mock_subscription_manager先初始化）"""
     return DataGrpcService(data_service)
 
 
@@ -43,28 +58,40 @@ class TestSubscriptionGrpc:
     
     def test_subscribe_quote_mock_mode(self, grpc_service, grpc_context):
         """测试订阅行情（Mock模式）"""
-        # 创建订阅请求
+        import threading
+
         request = data_pb2.SubscriptionRequest(
             symbols=["000001.SZ", "600000.SH"],
             adjust_type="none",
             subscription_type=data_pb2.SUBSCRIPTION_QUOTE
         )
-        
-        # 调用订阅方法（流式返回）
-        response_stream = grpc_service.SubscribeQuote(request, grpc_context)
-        
-        # 接收几条数据
-        count = 0
-        for quote_update in response_stream:
+
+        collected = []
+        error_holder = []
+
+        def consume():
+            try:
+                response_stream = grpc_service.SubscribeQuote(request, grpc_context)
+                for quote_update in response_stream:
+                    collected.append(quote_update)
+                    if len(collected) >= 3:
+                        break
+            except Exception as e:
+                error_holder.append(e)
+
+        t = threading.Thread(target=consume, daemon=True)
+        t.start()
+        t.join(timeout=10)
+
+        if error_holder:
+            raise error_holder[0]
+
+        assert not t.is_alive(), "SubscribeQuote stream did not finish within 10s"
+        assert len(collected) >= 3, f"Expected at least 3 quotes, got {len(collected)}"
+        for quote_update in collected:
             assert isinstance(quote_update, data_pb2.QuoteUpdate)
             assert quote_update.stock_code in ["000001.SZ", "600000.SH"]
             assert quote_update.last_price > 0
-            
-            count += 1
-            if count >= 3:  # 接收3条后退出
-                break
-        
-        assert count >= 3
     
     def test_unsubscribe_quote(self, grpc_service, grpc_context):
         """测试取消订阅"""
@@ -310,34 +337,38 @@ class TestSubscriptionManager:
         for sub_id in sub_ids:
             manager.unsubscribe(sub_id)
     
-    @pytest.mark.asyncio
-    async def test_stream_quotes_mock(self):
+    def test_stream_quotes_mock(self):
         """测试行情流（Mock模式）"""
+        from app.config import XTQuantMode
         from app.services.subscription_manager import SubscriptionManager
-        
-        settings = get_settings()
-        manager = SubscriptionManager(settings)
-        
-        # 创建订阅
+
+        mock_settings = get_settings().model_copy(deep=True)
+        mock_settings.xtquant = mock_settings.xtquant.model_copy(update={"mode": XTQuantMode.MOCK})
+        manager = SubscriptionManager(mock_settings)
+
         sub_id = manager.subscribe_quote(
             symbols=["000001.SZ"],
             adjust_type="none"
         )
-        
-        # 流式接收数据
-        count = 0
-        async for quote_data in manager.stream_quotes(sub_id):
+
+        async def _collect():
+            collected = []
+            async for quote_data in manager.stream_quotes(sub_id):
+                collected.append(quote_data)
+                if len(collected) >= 3:
+                    break
+            return collected
+
+        import asyncio
+        results = asyncio.run(_collect())
+
+        assert len(results) >= 3
+        for quote_data in results:
             assert "stock_code" in quote_data
             assert quote_data["stock_code"] == "000001.SZ"
-            
-            count += 1
-            if count >= 3:
-                break
-        
-        assert count >= 3
-        
-        # 清理
+
         manager.unsubscribe(sub_id)
+        manager.shutdown()
 
 
 if __name__ == "__main__":

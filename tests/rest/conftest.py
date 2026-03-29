@@ -72,7 +72,7 @@ def api_key() -> str:
 def api_headers(api_key: str) -> Dict[str, str]:
     """API 请求头"""
     return {
-        "Authorization": f"Bearer {api_key}",
+        "X-API-Key": api_key,
         "Content-Type": "application/json",
     }
 
@@ -105,7 +105,10 @@ def http_client(base_url: str, api_headers: Dict[str, str]) -> Generator[httpx.C
     yield client
     
     logger.info("关闭 HTTP 客户端")
-    client.close()
+    try:
+        client.close()
+    except Exception as e:
+        logger.warning(f"关闭客户端时出错: {e}")
 
 
 @pytest.fixture(scope="function")
@@ -141,18 +144,28 @@ def check_rest_server_health(http_client: httpx.Client):
     logger = logging.getLogger(__name__)
     
     try:
+        # 尝试访问健康检查端点（带斜杠）
         response = http_client.get("/health/", timeout=5)
+        
+        logger.info(f"健康检查响应状态码: {response.status_code}")
         
         if response.status_code == 200:
             logger.info("✅ REST API 服务器健康检查通过")
+            try:
+                data = response.json()
+                logger.info(f"健康检查响应数据: {data}")
+            except:
+                pass
         else:
-            logger.warning(f"⚠️ REST API 服务器状态异常: {response.status_code}")
+            logger.warning(f"⚠️ REST API 服务器状态异常: {response.status_code}, 响应: {response.text[:200]}")
             pytest.skip("REST API 服务器不可用")
-    except httpx.ConnectError:
-        logger.error("❌ 健康检查失败: 无法连接到服务器")
+    except httpx.ConnectError as e:
+        logger.error(f"❌ 健康检查失败: 无法连接到服务器 - {e}")
         pytest.skip("无法连接到 REST API 服务器")
     except Exception as e:
-        logger.error(f"❌ 健康检查失败: {e}")
+        logger.error(f"❌ 健康检查失败: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         pytest.skip("REST API 服务器健康检查失败")
 
 

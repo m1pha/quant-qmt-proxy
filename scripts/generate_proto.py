@@ -20,10 +20,10 @@ def generate_protobuf():
     proto_files = list(proto_dir.glob("*.proto"))
     
     if not proto_files:
-        print("❌ 未找到 .proto 文件")
+        print("[ERROR] 未找到 .proto 文件")
         return
     
-    print(f"📝 找到 {len(proto_files)} 个 proto 文件")
+    print(f"[INFO] 找到 {len(proto_files)} 个 proto 文件")
     
     for proto_file in proto_files:
         cmd = [
@@ -34,25 +34,25 @@ def generate_protobuf():
             str(proto_file)
         ]
         
-        print(f"生成 {proto_file.name}...")
+        print(f"[INFO] 生成 {proto_file.name}...")
         try:
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            print(f"  ✅ {proto_file.name} 生成成功")
+            print(f"  [OK] {proto_file.name} 生成成功")
         except subprocess.CalledProcessError as e:
-            print(f"  ❌ {proto_file.name} 生成失败:")
+            print(f"  [ERROR] {proto_file.name} 生成失败:")
             print(f"     {e.stderr}")
             raise
     
     # 创建 __init__.py
     init_file = output_dir / "__init__.py"
     init_file.touch()
-    print(f"\n✅ 创建 {init_file}")
+    print(f"\n[OK] 创建 {init_file}")
     
     # 修复生成文件中的 import 路径
-    print("\n🔧 修复 import 路径...")
+    print("\n[INFO] 修复 import 路径...")
     fix_imports(output_dir)
     
-    print("\n✅ Protobuf 代码生成完成！")
+    print("\n[SUCCESS] Protobuf 代码生成完成！")
     print(f"   输出目录: {output_dir}")
 
 
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     try:
         generate_protobuf()
     except Exception as e:
-        print(f"\n❌ 生成失败: {e}")
+        print(f"\n[ERROR] 生成失败: {e}")
         import traceback
         traceback.print_exc()
         exit(1)

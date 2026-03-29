@@ -1,0 +1,220 @@
+﻿本文件基于官方示例页面
+https://dict.thinktrader.net/nativeApi/code_examples.html?id=M1Ku17
+
+访问地址（替换 `{HOST}` 为实际域名或 IP）:
+- http://{HOST}/llms/xtquant_example.txt
+
+## 1 行情示例
+
+### 1.1 获取行情示例
+
+要点：
+- 先用 `download_history_data`（增量）补充历史K线数据
+- 下载财务数据、板块数据
+- 用 `get_market_data_ex` 获取本地历史+实时行情
+- 通过 `subscribe_quote` 订阅实时行情，使用 `xtdata.run()` 阻塞
+
+示例代码：
+
+```python
+from xtquant import xtdata
+import time
+
+code_list = ['000001.SZ']
+period = '1d'
+
+# 1. 下载数据
+for i in code_list:
+    xtdata.download_history_data(i, period=period, incrementally=True)
+
+# 2. 财务、板块补充
+xtdata.download_financial_data(code_list)
+xtdata.download_sector_data()
+
+# 3. 读取历史行情
+history_data = xtdata.get_market_data_ex([], code_list, period=period, count=-1)
+print(history_data)
+print('=' * 20)
+
+# 4. 订阅实时行情
+for i in code_list:
+    xtdata.subscribe_quote(i, period=period, count=-1)
+
+# 5. 等待订阅
+time.sleep(1)
+
+kline_data = xtdata.get_market_data_ex([], code_list, period=period)
+print(kline_data)
+
+for i in range(10):
+    kline_data = xtdata.get_market_data_ex([], code_list, period=period)
+    print(kline_data)
+    time.sleep(3)
+
+# 6. 回调模式
+
+def f(data):
+    # data 是一次触发的更新数据（通常1条）
+    kline_in_callback = xtdata.get_market_data_ex([], code_list, period=period)
+    print(kline_in_callback)
+
+for i in code_list:
+    xtdata.subscribe_quote(i, period=period, count=-1, callback=f)
+
+xtdata.run()
+```
+
+### 1.2 连接VIP服务器示例
+
+```python
+import time
+import pandas as pd
+from xtquant import xtdatacenter as xtdc
+from xtquant import xtdata
+
+xtdc.set_token('这里输入token')
+
+addr_list = [
+    '115.231.218.73:55310',
+    '115.231.218.79:55310',
+    '42.228.16.211:55300',
+    '42.228.16.210:55300',
+    '36.99.48.20:55300',
+    '36.99.48.21:55300',
+]
+xtdc.set_allow_optmize_address(addr_list)
+
+xtdc.set_kline_mirror_enabled(True)
+xtdc.init()
+port = xtdc.listen(port=58621)
+xtdata.connect(port=port)
+print('connected', xtdata.data_dir)
+
+servers = xtdata.get_quote_server_status()
+for k, v in servers.items():
+    print(k, v)
+
+xtdata.run()
+```
+
+### 1.3 连接指定服务器示例
+
+```python
+import time
+from xtquant import xtdata
+
+info = {'ip': '115.231.218.73', 'port': 55300, 'username': '', 'pwd': ''}
+
+connect_success = 0
+
+def func(d):
+    global connect_success
+    if d.get('ip') == info['ip'] and d.get('port') == info['port']:
+        connect_success = 1 if d.get('status') == 'connected' else 2
+
+xtdata.watch_quote_server_status(func)
+qs = xtdata.QuoteServer(info)
+qs.connect()
+
+while connect_success == 0:
+    time.sleep(0.3)
+
+if connect_success == 2:
+    print('连接失败')
+
+print('当前连接状态', xtdata.get_quote_server_status())
+```
+
+### 1.4 下载＋全推订阅示例
+
+```python
+import time
+from xtquant import xtdata
+
+code='600000.SH'
+print('全推数据', xtdata.get_full_tick([code]))
+xtdata.download_history_data(code, period='1m', start_time='20230701')
+
+def callback_func(data):
+    print('回调触发', data)
+
+xtdata.subscribe_quote(code, period='1m', count=-1, callback=callback_func)
+
+data = xtdata.get_market_data(['close'], [code], period='1m', start_time='20230701')
+print('一次性取数据', data)
+xtdata.run()
+```
+
+## 2 交易示例
+
+### 2.1 简单买卖示例
+（示例已在 `xttrader.txt` 中包含，可参考），关键步骤：
+- 初始化 `XtQuantTrader(path, session_id)`
+- 注册回调 `register_callback`
+- `start()`, `connect()`, `subscribe(acc)`
+- `order_stock_sync/order_stock_async`, `cancel_stock_order` 等
+- `run_forever()` 阻塞
+
+### 2.2 单股订阅实盘示例
+
+示例核心代码：
+- 下载板块数据 `xtdata.download_sector_data()`
+- 订阅列表 `code_list`, `xtdata.subscribe_quote(code, '1d', callback=f)`
+- `on_stock_trade`,`on_stock_order` 回调处理
+- `xt_trader.run_forever()`
+
+### 2.3 全推订阅实盘示例
+
+示例核心代码：
+- `xtdata.subscribe_whole_quote(['SH','SZ'], callback=f)`
+- 回调 `f` 中做涨幅/委托判定
+- `xt_trader.order_stock_async` 买卖操作
+- `xt_trader.run_forever()`
+
+### 2.4 交易接口重连示例
+
+示例核心：
+- `on_disconnected` 清理状态
+- try 多个 `session_id` 连接（`create_trader`, `try_connect`）
+- 主循环里保持 `xt_trader` 连接
+- 断线重连时注意 `session_id` 不要无限增长
+
+### 2.5 指定session id范围连接
+
+```python
+def connect(path, session):
+    from xtquant import xttrader
+    trader = xttrader.XtQuantTrader(path, session)
+    trader.start()
+    return trader if trader.connect() == 0 else None
+
+ids=list(range(100,200))
+import random
+random.shuffle(ids)
+
+for session_id in ids:
+    trader = connect('userdata_mini', session_id)
+    if trader:
+        print('连接成功', session_id)
+        break
+```
+
+### 2.6 信用账号还款示例
+
+核心:
+- `xt_trader.order_stock(acc, stock_code, xtconstant.CREDIT_DIRECT_CASH_REPAY, repay_money, xtconstant.FIX_PRICE, -1, ...)`
+
+### 2.7 下单后通过回调撤单示例
+
+核心：
+- `on_stock_order` 触发后根据 `order.order_status` 调用 `cancel_order_stock_sysid_async`.
+
+---
+
+## 风格优化（llmstxt.org 规范）
+
+- 本文件使用纯文本头部 `#` 组织，保持简单清晰。
+- 代码块用 ```python 包裹，便于渲染识别。
+- 小节标题以 `##` / `###` 列出。
+- 添加“本地访问地址”与“官方示例来源”。
+- 避免冗余 HTML 链接，保持可读纯文本。

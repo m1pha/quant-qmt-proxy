@@ -459,6 +459,8 @@ class SubscriptionManager:
                 while context.active:
                     # 模拟行情数据
                     for symbol in context.symbols:
+                        if not context.active:
+                            return
                         mock_data = {
                             "stock_code": symbol,
                             "timestamp": datetime.now().isoformat(),
@@ -472,7 +474,11 @@ class SubscriptionManager:
                         }
                         yield mock_data
 
-                    await asyncio.sleep(1.0)  # 每秒推送一次
+                    # 使用短间隔睡眠，使取消操作能快速响应
+                    for _ in range(20):
+                        if not context.active:
+                            return
+                        await asyncio.sleep(0.05)  # 每秒推送一次（分20次短睡眠）
 
             # 真实模式：从队列读取数据
             else:

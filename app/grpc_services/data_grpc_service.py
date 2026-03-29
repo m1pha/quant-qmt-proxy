@@ -1383,6 +1383,8 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
             # 创建订阅
             subscription_id = subscription_manager.subscribe_quote(
                 symbols=list(request.symbols),
+                period=request.period or "tick",
+                start_date=request.start_time or "",
                 adjust_type=request.adjust_type or "none"
             )
             
@@ -1422,8 +1424,8 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                     subscription_manager.unsubscribe(subscription_id)
             
             # 使用事件循环迭代异步生成器
+            async_gen = stream_data()
             try:
-                async_gen = stream_data()
                 while True:
                     try:
                         quote_update = loop.run_until_complete(async_gen.__anext__())
@@ -1431,7 +1433,8 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                     except StopAsyncIteration:
                         break
             finally:
-                # 只在当前线程创建的循环时才关闭
+                # 确保异步生成器被正确关闭（触发finally块清理订阅）
+                loop.run_until_complete(async_gen.aclose())
                 if not loop.is_running():
                     loop.close()
         
@@ -1511,8 +1514,8 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                     subscription_manager.unsubscribe(subscription_id)
             
             # 使用事件循环迭代异步生成器
+            async_gen = stream_data()
             try:
-                async_gen = stream_data()
                 while True:
                     try:
                         quote_update = loop.run_until_complete(async_gen.__anext__())
@@ -1520,7 +1523,8 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                     except StopAsyncIteration:
                         break
             finally:
-                # 只在当前线程创建的循环时才关闭
+                # 确保异步生成器被正确关闭（触发finally块清理订阅）
+                loop.run_until_complete(async_gen.aclose())
                 if not loop.is_running():
                     loop.close()
         

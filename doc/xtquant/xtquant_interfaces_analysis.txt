@@ -1,0 +1,328 @@
+XtQuant 对外接口分析报告
+=====================================
+
+生成时间: 2025年3月（基于 doc/xtquant/llms 文档更新）
+分析范围: xtquant包内所有对外接口
+
+## 1. XtData 行情模块接口
+
+### 1.1 行情订阅接口
+- subscribe_quote() - 订阅单股行情（count=0 仅实时，count=-1 含全部历史）
+- subscribe_quote2() - 订阅单股行情（支持 dividend_type 除权参数）
+- subscribe_whole_quote() - 订阅全推行情（如 ['SH','SZ']）
+- unsubscribe_quote() - 反订阅行情数据
+- run() - 阻塞线程接收行情回调
+- watch_quote_server_status() - 监听行情服务器连接状态变化
+- connect() - 连接指定端口的行情服务（xtdatacenter场景）
+
+### 1.2 行情数据获取接口
+- get_kline() - 获取K线数据（主要接口，支持 dividend_type）
+- get_market_data() - 获取行情数据（支持字段过滤）
+- get_market_data_ex() - 获取本地历史+实时行情（推荐，返回含最新数据）
+- get_local_data() - 获取本地行情数据
+- get_full_tick() - 获取全推快照数据（list of stock_code）
+- get_full_kline() - 获取最新交易日K线数据（含当日）
+- get_divid_factors() - 获取除权数据
+- get_l2_quote() - 获取level2行情快照数据
+- get_l2_order() - 获取level2逐笔委托数据
+- get_l2_transaction() - 获取level2逐笔成交数据
+- get_quote_server_status() - 获取当前行情服务器连接状态
+
+### 1.3 数据下载接口
+- download_history_data() - 下载历史行情数据（支持 incrementally=True 增量）
+- download_history_data2() - 下载历史行情数据新版（支持增量，推荐）
+- download_financial_data() - 下载财务数据（支持单股或列表）
+- download_financial_data2() - 下载财务数据批量版本
+- download_sector_data() - 下载板块分类信息
+- download_index_weight() - 下载指数成分权重信息
+- download_cb_data() - 下载可转债基础信息
+- download_etf_info() - 下载ETF申赎清单信息
+- download_holiday_data() - 下载节假日数据
+
+### 1.4 财务数据接口
+- get_financial_data() - 获取财务数据
+- get_tabular_data() - 获取表格数据
+
+### 1.5 基础信息接口
+- get_instrument_detail() - 获取合约基础信息（名称、总股本、流通股本、交易所等）
+- get_instrument_type() - 获取合约类型
+- get_trading_dates() - 获取交易日列表（get_trade_date 为旧接口别名）
+- get_sector_list() - 获取板块列表
+- get_stock_list_in_sector() - 获取板块成分股列表（支持 real_timetag 参数）
+- get_index_weight() - 获取指数成分权重信息
+- get_holidays() - 获取节假日数据
+- get_trading_calendar() - 获取交易日历及交易时段（market, start_date, end_date, tradetimes）
+- get_cb_info() - 获取可转债基础信息
+- get_ipo_info() - 获取新股申购信息
+- get_period_list() - 获取可用周期列表
+- get_etf_info() - 获取ETF申赎清单信息
+- get_data_dir() - 获取本地数据路径
+
+### 1.6 板块管理接口
+- create_sector_folder() - 创建板块目录节点
+- create_sector() - 创建板块
+- add_sector() - 添加自定义板块
+- remove_stock_from_sector() - 移除板块成分股
+- remove_sector() - 移除自定义板块
+- reset_sector() - 重置板块
+
+### 1.7 周期类型（period）说明
+
+Level1 周期：
+- 'tick', '1m', '5m', '15m', '30m', '1h', '1d', '1w', '1mon', '1q', '1hy', '1y'
+
+Level2 周期：
+- 'l2quote', 'l2order', 'l2transaction', 'l2quoteaux', 'l2orderqueue', 'l2thousand'
+
+投研版特色周期：
+- 'warehousereceipt', 'futureholderrank', 'interactiveqa', 'transactioncount1m', 'transactioncount1d'
+- 'delistchangebond', 'replacechangebond', 'specialtreatment', 'northfinancechange1m', 'northfinancechange1d'
+- 'dividendplaninfo', 'historycontract', 'optionhistorycontract', 'historymaincontract', 'stoppricedata'
+- 'snapshotindex', 'stocklistchange', 'limitupperformance', 'announcement', 'hktstatistics', 'hktdetails'
+- 'riskfreerate', 'etfstatistics', 'etfstatisticsl2'
+
+复权类型（dividend_type）：
+- 'none'（不复权）, 'front'（前复权）, 'back'（后复权）, 'front_ratio'（等比前复权）, 'back_ratio'（等比后复权）
+
+## 2. XtDataCenter 模块接口（VIP/云端连接）
+
+- xtdatacenter.set_token() - 设置VIP访问Token
+- xtdatacenter.set_allow_optmize_address() - 设置允许优化的服务器地址列表
+- xtdatacenter.set_kline_mirror_enabled() - 开启K线镜像
+- xtdatacenter.init() - 初始化数据中心连接
+- xtdatacenter.listen() - 监听本地端口，返回端口号供 xtdata.connect() 使用
+- QuoteServer() - 连接指定行情服务器（ip, port, username, pwd）
+
+## 3. XtTrader 交易模块接口
+
+### 3.1 系统设置接口
+- XtQuantTrader(path, session_id) - 创建API实例（每个策略使用唯一 session_id）
+- register_callback() - 注册回调类
+- start() - 启动交易线程
+- connect() - 建立连接（返回0表示成功）
+- stop() - 停止API接口
+- run_forever() - 阻塞当前线程（实盘策略主循环）
+- set_relaxed_response_order_enabled() - 开启主动请求接口的专用线程
+
+### 3.2 订阅管理接口
+- subscribe() - 订阅账号信息（触发资产/持仓推送）
+- unsubscribe() - 反订阅账号信息
+
+### 3.3 交易操作接口
+
+#### 标准下单/撤单：
+- order_stock() - 股票报单（旧接口）
+- order_stock_sync() - 股票同步报单（推荐，返回订单ID）
+- order_stock_async() - 股票异步报单（高频场景）
+- cancel_order_stock() - 股票同步撤单（旧接口）
+- cancel_stock_order() - 股票同步撤单（推荐）
+- cancel_order_stock_sysid() - 根据合同编号撤单（同步）
+- cancel_stock_order_async() - 股票异步撤单（推荐）
+- cancel_order_stock_async() - 股票异步撤单（旧接口）
+- cancel_order_stock_sysid_async() - 根据合同编号异步撤单
+
+#### 批量下单：
+- order_stock_batch_sync() - 批量同步下单（account_id, orders列表, order_type）
+
+#### 信用交易：
+- order_stock_credit_sync() - 信用交易同步下单（credit_type: 'margin' 或 'short'）
+
+#### 新股申购：
+- order_ipo_sync() - 新股申购同步下单
+
+#### 智能算法：
+- get_smart_algo_param() - 获取算法参数
+- smart_algo_order_async() - 智能算法异步下单（TWAP等，指定 start_time/end_time）
+- query_smart_algo_task() - 查询算法任务列表
+- cancel_smart_algo_task_async() - 撤销算法任务
+
+### 3.4 资金划拨接口
+- fund_transfer() - 资金划拨（from_account → to_account）
+- bank_transfer_in() - 银证转账（银行转证券）同步
+- bank_transfer_in_async() - 银证转账（银行转证券）异步
+- bank_transfer_out() - 银证转账（证券转银行）同步
+- bank_transfer_out_async() - 银证转账（证券转银行）异步
+- ctp_transfer_option_to_future() - CTP资金内转（期权转期货）同步
+- ctp_transfer_option_to_future_async() - CTP资金内转（期权转期货）异步
+- ctp_transfer_future_to_option() - CTP资金内转（期货转期权）同步
+- ctp_transfer_future_to_option_async() - CTP资金内转（期货转期权）异步
+
+### 3.5 数据导入接口
+- sync_transaction_from_external() - 外部交易数据录入
+
+### 3.6 查询接口
+
+#### 资产/持仓/委托/成交查询：
+- query_asset() - 资产查询（推荐，返回现金、总资产等）
+- query_stock_asset() - 资产查询（旧接口）
+- query_positions() - 持仓查询（推荐，返回持仓列表）
+- query_stock_positions() - 持仓查询（旧接口）
+- query_orders() - 委托查询（推荐，支持 only_cancellable 过滤）
+- query_stock_orders() - 委托查询（旧接口）
+- query_trades() - 成交查询（推荐）
+- query_stock_trades() - 成交查询（旧接口）
+- query_position_statistics() - 期货持仓统计查询
+
+#### 信用查询：
+- query_credit_detail() - 信用资产查询
+- query_stk_compacts() - 负债合约查询
+- query_credit_subjects() - 融资融券标的查询
+- query_credit_slo_code() - 可融券数据查询
+- query_credit_assure() - 标的担保品查询
+
+#### 其他查询：
+- query_new_purchase_limit() - 新股申购额度查询
+- query_ipo_data() - 当日新股信息查询
+- query_account_infos() - 账号信息查询
+- query_com_fund() - 普通柜台资金查询
+- query_com_position() - 普通柜台持仓查询
+- export_data() - 通用数据导出（data_type: orders/trades/positions/asset）
+- query_data() - 通用数据查询
+- query_bank_info() - 银行信息查询
+- query_bank_amount() - 银行余额查询
+- query_bank_transfer_stream() - 银行转账流水查询
+- query_secu_account() - 股东账户查询
+
+### 3.7 约券相关接口
+- smt_query_quoter() - 券源行情查询
+- smt_negotiate_order_async() - 库存券约券申请
+- smt_query_compact() - 约券合约查询
+
+## 4. 回调接口（XtQuantTraderCallback）
+
+- on_connected() - 连接成功推送
+- on_disconnected() - 连接断开推送（建议实现重连逻辑）
+- on_account_status() - 账号状态推送
+- on_stock_asset() - 资金变动推送（含 cash, total_asset 等）
+- on_stock_order() - 委托回报推送（含 stock_code, order_status 等）
+- on_stock_trade() - 成交变动推送（含 stock_code, volume, price 等）
+- on_stock_position() - 持仓变动推送（含 stock_code, volume, profit_rate 等）
+- on_order_error() - 委托失败推送（含 error_msg）
+- on_cancel_error() - 撤单失败推送（含 error_msg）
+- on_order_stock_async_response() - 异步下单回报推送
+- on_cancel_order_stock_async_response() - 异步撤单回报推送
+- on_smt_appointment_async_response() - 约券相关异步接口回报推送
+- on_bank_transfer_async_response() - 银证转账异步接口回报推送
+- on_ctp_internal_transfer_async_response() - CTP资金内转异步接口回报推送
+
+## 5. 数据结构（xttype模块）
+
+- StockAccount(account_id, account_type='STOCK') - 证券账号类
+- XtAsset - 资产结构（cash, total_asset 等）
+- XtOrder - 委托结构（stock_code, order_status, quantity, price 等）
+- XtTrade - 成交结构（stock_code, volume, price 等）
+- XtPosition - 持仓结构（stock_code, volume, avg_price, profit_rate 等）
+- XtPositionStatistics - 期货持仓统计
+- XtOrderResponse - 异步下单委托反馈
+- XtCancelOrderResponse - 异步撤单委托反馈
+- XtOrderError - 下单失败错误（error_msg）
+- XtCancelError - 撤单失败错误（error_msg）
+- XtCreditDetail - 信用账号资产
+- StkCompacts - 负债合约
+- CreditSubjects - 融资融券标的
+- CreditSloCode - 可融券数据
+- CreditAssure - 标的担保品
+- XtAccountStatus - 账号状态
+- XtAccountInfo - 账号信息
+- XtSmtAppointmentResponse - 约券相关异步接口反馈
+- XtBankTransferResponse - 银证转账异步接口反馈
+
+## 6. 常量定义（xtconstant模块）
+
+包含各种交易相关的常量定义，如：
+- 账号类型常量（STOCK, CREDIT 等）
+- 交易市场常量（SH, SZ 等）
+- 委托类型常量（LO 限价, MO 市价, AO 竞价等）
+- 报价类型常量
+- 委托状态常量
+- 账号状态常量
+- 划拨方向常量
+- 多空方向常量（BUY, SELL）
+- 交易操作常量（CREDIT_DIRECT_CASH_REPAY 信用还款等）
+
+## 7. 辅助工具（xttools模块）
+
+- export_data() - 导出数据为CSV/Excel（data_type: orders/trades/positions/asset）
+- query_data() - 通用数据查询（支持 query_type, limit, offset 分页）
+- parse_date() - 日期解析工具函数（按版本可用）
+- format_time() - 时间格式化工具函数（按版本可用）
+- check_path() / ensure_dir() - 路径检查/目录创建（按版本可用）
+
+## 8. 接口统计汇总
+
+### 按模块分类：
+- XtData行情模块: 约55+个接口（含新增 get_kline, get_market_data_ex, xtdatacenter等）
+- XtTrader交易模块: 约70+个接口（含新增批量、信用、算法下单等）
+- 回调接口: 14个接口
+- 数据结构: 19个类
+- 常量定义: 数百个常量
+- XtTools辅助工具: 5+个接口
+
+### 按功能分类：
+- 行情数据订阅和获取: 18个接口
+- 数据下载和管理: 9个接口
+- 财务数据: 2个接口
+- 基础信息查询: 14个接口
+- 板块管理: 6个接口
+- 云端/VIP连接: 6个接口
+- 系统设置: 7个接口
+- 交易操作（含批量/信用/算法）: 15个接口
+- 资金划拨: 9个接口
+- 数据导入: 1个接口
+- 各类查询: 25+个接口
+- 约券功能: 3个接口
+- 辅助工具: 5+个接口
+
+## 9. 使用建议
+
+### 行情数据：
+- 先调用 `download_*` 系列接口确保本地数据完整，再用 `get_*` 获取
+- 推荐使用 `get_market_data_ex` 获取含最新数据的历史+实时行情
+- 大规模订阅优先用 `subscribe_whole_quote` 全推，而非逐一订阅单股
+- 合理设置 `count` 参数（-1=全部, 0=不取历史, N=最近N条）
+- 订阅回调在独立线程中执行，注意线程安全
+
+### 交易接口：
+- 每个策略使用唯一 `session_id`，避免冲突
+- 必须实现 `on_disconnected` 回调处理断线重连（可尝试多个 session_id）
+- 同步接口适合低频策略，异步接口（`*_async`）适合高频交易
+- 检查 `on_order_error` / `on_cancel_error` 处理失败情况
+- 重连时 `session_id` 不要无限增长，建议在固定范围内随机选取
+
+## 10. 总结
+
+XtQuant包提供了完整的量化交易解决方案，主要包含：
+
+1. **行情数据模块（XtData）**：约55+个接口，涵盖行情订阅、K线获取、数据下载、财务信息、合约基础信息等
+2. **云端连接模块（XtDataCenter）**：支持VIP Token认证及连接多个行情服务器
+3. **交易模块（XtTrader）**：约70+个接口，涵盖标准/批量/信用/算法下单、撤单、资金划拨、多维度查询、约券等
+4. **数据结构模块（XtType）**：定义19个数据结构类
+5. **常量定义模块（XtConstant）**：提供各种交易相关常量
+6. **回调机制**：提供14个回调接口用于实时推送
+7. **辅助工具模块（XtTools）**：提供数据导出与通用查询功能
+
+这些接口覆盖了量化交易的核心需求，包括：
+- 实时行情数据订阅和获取（Level1 / Level2 / 投研版）
+- 历史数据下载和管理（支持增量下载）
+- 交易下单（同步/异步/批量/信用/算法）、撤单、查询
+- 资金管理和划拨
+- 持仓管理和统计
+- 信用交易支持
+- 约券功能
+- 银证转账
+- 数据导入导出
+- VIP云端行情服务接入
+
+后续可以根据具体需求，为每个接口创建对应的RESTful API端点，将这些本地接口封装成Web服务供外部调用。
+
+## 11. 文档参考
+
+- 官方文档: https://dict.thinktrader.net/nativeApi/start_now.html
+- 官方示例: https://dict.thinktrader.net/nativeApi/code_examples.html?id=M1Ku17
+- 官方XtTools文档: https://dict.thinktrader.net/nativeApi/xttools.html
+- LLMs文档目录: doc/xtquant/llms/
+  - llms.txt: 概览与快速上手指南
+  - xtdata.txt: XtData行情模块详解
+  - xttrader.txt: XtTrader交易模块详解
+  - xttools.txt: XtTools辅助模块说明
+  - xtquant_example.txt: 官方完整示例汇总

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.config import get_settings
-from app.routers import data, health, trading, websocket
+from app.routers import data, health, llms, trading, websocket
 from app.utils.exceptions import XTQuantException
 from app.utils.helpers import format_response
 from app.utils.logger import configure_logging, logger
@@ -175,6 +175,7 @@ app.include_router(health.router)
 app.include_router(data.router)
 app.include_router(trading.router)
 app.include_router(websocket.router)
+app.include_router(llms.router)
 
 
 @app.get("/")
@@ -189,6 +190,7 @@ async def root():
             "description": "基于xtquant的量化交易代理服务",
             "docs_url": "/docs",
             "redoc_url": "/redoc",
+            "llms_url": "/llms/",
         },
         message="欢迎使用xtquant-proxy服务",
     )

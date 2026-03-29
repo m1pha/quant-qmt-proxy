@@ -1,0 +1,70 @@
+﻿本地访问地址（替换 `{HOST}` 为实际域名或 IP）：
+- http://{HOST}/llms/xttools.txt
+- http://{HOST}/llms/llms.txt
+- http://{HOST}/llms/xtdata.txt
+- http://{HOST}/llms/xttrader.txt
+- http://{HOST}/llms/xtquant_example.txt
+
+官方文档参考：
+- https://dict.thinktrader.net/nativeApi/xttools.html
+
+## 1 模块概述
+
+`xtquant.xttools` 是辅助模块，提供通用功能，如：
+- 数据导出与查询（`export_data`, `query_data`）
+- 交易数据处理工具
+- 实用工具函数（如时间转换、回测导出等）
+
+## 2 常用接口
+
+### 2.1 export_data
+
+用途：导出数据为 CSV/Excel 等，方便备份/分析。
+
+```python
+from xtquant import xttools
+
+result = xttools.export_data(
+    account_id='1000000365',
+    data_type='orders',  # 支持 values: orders/trades/positions/asset
+    start_date='20240101',
+    end_date='20240331',
+    file_path='output/orders_2024Q1.csv'
+)
+print('导出结果', result)
+```
+
+返回：标准字典或布尔值，依据版本不同。
+
+### 2.2 query_data
+
+用途：通用接口查询数据，支持分页
+
+```python
+from xtquant import xttools
+
+query = xttools.query_data(
+    query_type='trade',
+    account_id='1000000365',
+    start_date='20240101',
+    end_date='20240331',
+    limit=500,
+    offset=0
+)
+print(query)
+```
+
+### 2.3 其他工具函数
+
+由于 `xttools` 功能可能随版本变动，建议查看代码实现：
+- `xtquant/xttools.py`
+
+常见可用函数：
+- `parse_date`, `format_time`（如有）
+- `check_path`, `ensure_dir`
+
+## 3 使用建议
+
+- `xttools` 主要当作第二块功能留存，通常在策略退出或结果归档时调用。
+- 交易回报与风险控制仍应依靠 `xttrader` 回调。
+- 如果 `xttools` 导出接口失败，请检查文件路径、权限与磁盘空间。

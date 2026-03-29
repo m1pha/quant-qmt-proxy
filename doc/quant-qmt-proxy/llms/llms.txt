@@ -1,0 +1,116 @@
+# quant-qmt-proxy
+
+> A FastAPI + gRPC + WebSocket proxy service for the xtquant (国金 QMT) quantitative trading SDK.
+> Wraps xtquant market data and trading functions into REST, gRPC, and WebSocket interfaces.
+
+## Documentation Index
+
+- /llms/llms.txt        — This file. Project overview and quick-start guide.
+- /llms/api.txt         — Full REST API reference (all endpoints, parameters, responses).
+- /llms/data.txt        — Market data module: subscriptions, K-line, tick, L2, downloads.
+- /llms/trading.txt     — Trading module: connect, order, cancel, query positions/assets.
+
+Optional detail pages:
+- /llms/websocket.txt   — WebSocket protocol for real-time quote streaming.
+- /llms/grpc.txt        — gRPC service definitions and usage examples.
+
+Official references:
+- Swagger UI:   http://{HOST}/docs
+- ReDoc:        http://{HOST}/redoc
+- QMT docs:     https://dict.thinktrader.net/nativeApi/start_now.html
+- Source repo:  https://github.com/liqimore/quant-qmt-proxy
+
+---
+
+## Project Overview
+
+`quant-qmt-proxy` is a multi-protocol proxy that exposes the `xtquant` Python SDK (bundled with 国金证券 QMT) as network services, enabling any language/platform to access A-share market data and execute trades.
+
+Key capabilities:
+- REST API  — HTTP/JSON, auto-generated Swagger docs, API-Key auth
+- gRPC      — Binary protocol, streaming subscriptions, low latency
+- WebSocket — Real-time quote push with heartbeat support
+- Three modes: `mock` (no QMT needed), `dev` (real data, no trade), `prod` (real trading)
+
+## Directory Structure
+
+```
+quant-qmt-proxy/
+├── app/
+│   ├── main.py                 # FastAPI entry point, route registration
+│   ├── grpc_server.py          # gRPC server startup
+│   ├── config.py               # Settings (YAML + env var APP_MODE)
+│   ├── dependencies.py         # Singleton service injection
+│   ├── models/
+│   │   ├── data_models.py      # Pydantic models for market data
+│   │   └── trading_models.py   # Pydantic models for trading
+│   ├── routers/
+│   │   ├── data.py             # Market data REST routes (/api/v1/data/)
+│   │   ├── trading.py          # Trading REST routes (/api/v1/trading/)
+│   │   ├── health.py           # Health check routes (/health/)
+│   │   ├── websocket.py        # WebSocket routes (/ws/)
+│   │   └── llms.py             # LLMs doc routes (/llms/)
+│   ├── grpc_services/          # gRPC service implementations
+│   └── services/
+│       ├── data_service.py     # xtdata wrapper
+│       ├── trading_service.py  # xttrader wrapper
+│       └── subscription_manager.py  # Quote subscription manager
+├── proto/                      # .proto definitions
+├── generated/                  # Generated protobuf Python stubs
+├── doc/quant-qmt-proxy/llms/   # This LLMs documentation directory
+├── config.yml                  # Unified configuration file
+└── requirements.txt
+```
+
+## Quick Start
+
+### Prerequisites
+- Python 3.10+
+- 国金 QMT client running (dev/prod mode only)
+- Windows OS (QMT is Windows-only)
+
+### Install
+```bash
+pip install -r requirements.txt
+```
+
+### Start Service
+```powershell
+# mock mode — no QMT needed, uses simulated data
+$env:APP_MODE="mock"; python run.py
+
+# dev mode — real market data, trading intercepted (default)
+$env:APP_MODE="dev"; python run.py
+
+# prod mode — real market data + real trading
+$env:APP_MODE="prod"; python run.py
+```
+
+Service endpoints after startup:
+
+| Service        | URL                           |
+|----------------|-------------------------------|
+| REST API       | http://{HOST}                 |
+| gRPC           | {HOST_GRPC}                   |
+| Swagger UI     | http://{HOST}/docs            |
+| ReDoc          | http://{HOST}/redoc           |
+| Health Check   | http://{HOST}/health/         |
+| WebSocket Test | http://{HOST}/ws/test         |
+| LLMs Docs      | http://{HOST}/llms/           |
+
+### Authentication
+All API endpoints require an API Key in the request header:
+```
+X-API-Key: your-api-key
+```
+Dev mode default keys: `dev-api-key-001`, `dev-api-key-002` (set in `config.yml`).
+
+## Running Modes
+
+| Mode   | Connect xtquant | Real Trading | Use Case                        |
+|--------|-----------------|--------------|----------------------------------|
+| mock   | No              | No           | Frontend dev, API testing        |
+| dev    | Yes             | No (blocked) | Strategy dev, real data no trade |
+| prod   | Yes             | Yes          | Live trading                     |
+
+Mode is set via environment variable `APP_MODE` (default: `dev`).

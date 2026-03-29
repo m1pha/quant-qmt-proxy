@@ -1,0 +1,597 @@
+# quant-qmt-proxy — Full REST API Reference
+
+Base URL: http://{HOST}
+Authentication: Header `X-API-Key: <your-key>` required on all endpoints except health checks.
+
+---
+
+## Health Check (`/health/`)
+
+### GET /health/
+Health status of the service.
+
+Response:
+```json
+{"success": true, "data": {"status": "healthy", "app_name": "xtquant-proxy", "app_version": "1.0.0", "xtquant_mode": "mock"}, "message": "服务运行正常"}
+```
+
+### GET /health/ready
+Readiness check (is the service ready to serve traffic?).
+
+### GET /health/live
+Liveness check (is the service process alive?).
+
+---
+
+## Market Data (`/api/v1/data/`)
+
+### POST /api/v1/data/market
+Get K-line / tick market data.
+
+Request body:
+```json
+{
+  "stock_codes": ["000001.SZ", "600000.SH"],
+  "start_date": "20240101",
+  "end_date": "20240331",
+  "period": "1d",
+  "fields": null,
+  "adjust_type": "none",
+  "fill_data": true,
+  "disable_download": false
+}
+```
+
+Fields:
+- `stock_codes` (required): list of stock codes, format `{code}.{exchange}` e.g. `000001.SZ`
+- `start_date` / `end_date`: `YYYYMMDD` or `YYYYMMDDHHMMSS`, empty string = no limit
+- `period`: one of `tick`, `1m`, `5m`, `15m`, `30m`, `1h`, `1d`, `1w`, `1mon`, `1q`, `1hy`, `1y`
+- `adjust_type`: `none` | `front` | `back` | `front_ratio` | `back_ratio`
+- `fill_data`: fill missing data gaps (default true)
+- `disable_download`: skip downloading missing data (default false)
+
+Response: `List[MarketDataResponse]`
+```json
+[
+  {
+    "stock_code": "000001.SZ",
+    "data": [{"time": 1704038400000, "open": 9.5, "high": 9.8, "low": 9.4, "close": 9.7, "volume": 1000000, "amount": 9700000.0}],
+    "fields": ["time", "open", "high", "low", "close", "volume", "amount"],
+    "period": "1d",
+    "start_date": "20240101",
+    "end_date": "20240331"
+  }
+]
+```
+
+### POST /api/v1/data/financial
+Get financial statement data.
+
+Request body:
+```json
+{
+  "stock_codes": ["000001.SZ"],
+  "table_list": ["Balance", "Income", "CashFlow"],
+  "start_date": "20230101",
+  "end_date": "20231231"
+}
+```
+
+Response: `List[FinancialDataResponse]`
+```json
+[{"stock_code": "000001.SZ", "table_name": "Balance", "data": [...], "columns": [...]}]
+```
+
+### GET /api/v1/data/sectors
+Get list of all sectors/indices.
+
+Response: `List[SectorResponse]`
+```json
+[{"sector_name": "沪深300", "stock_list": ["000001.SZ", ...], "sector_type": null}]
+```
+
+### POST /api/v1/data/sector
+Get stocks in a specific sector.
+
+Request body:
+```json
+{"sector_name": "沪深300", "sector_type": null}
+```
+
+### POST /api/v1/data/index-weight
+Get constituent weights of an index.
+
+Request body:
+```json
+{"index_code": "000300.SH", "date": "20240101"}
+```
+
+Response: `IndexWeightResponse`
+```json
+{"index_code": "000300.SH", "date": "20240101", "weights": [{"stock_code": "000001.SZ", "weight": 0.045}]}
+```
+
+### GET /api/v1/data/trading-calendar/{year}
+Get trading calendar for a year.
+
+Path param: `year` (int, e.g. 2024)
+
+Response: `TradingCalendarResponse`
+```json
+{"trading_dates": ["20240102", "20240103", ...], "holidays": ["20240101", ...], "year": 2024}
+```
+
+### GET /api/v1/data/instrument/{stock_code}
+Get contract/instrument detail.
+
+Path param: `stock_code` e.g. `000001.SZ`
+
+Response: `InstrumentInfo`
+```json
+{
+  "ExchangeID": "SZ", "InstrumentID": "000001", "InstrumentName": "平安银行",
+  "PreClose": 9.5, "UpStopPrice": 10.45, "DownStopPrice": 8.55,
+  "FloatVolume": 19405918198.0, "TotalVolume": 19405918198.0,
+  "IsTrading": true
+}
+```
+
+### GET /api/v1/data/etf/{etf_code}
+Get ETF basic information.
+
+Path param: `etf_code` e.g. `510300.SH`
+
+Response: `ETFInfoResponse`
+```json
+{"etf_code": "510300.SH", "etf_name": "ETF510300", "underlying_asset": "沪深300", "creation_unit": 1000000, "redemption_unit": 1000000}
+```
+
+---
+
+## Basic Info Endpoints
+
+### GET /api/v1/data/instrument-type/{stock_code}
+Get contract type flags.
+
+Response:
+```json
+{"data": {"stock_code": "000001.SZ", "index": false, "stock": true, "fund": false, "etf": false, "bond": false, "option": false, "futures": false}}
+```
+
+### GET /api/v1/data/holidays
+Get list of market holidays.
+
+Response:
+```json
+{"data": {"holidays": ["20240101", "20240210", ...]}}
+```
+
+### GET /api/v1/data/convertible-bonds
+Get convertible bond list and basic info.
+
+### GET /api/v1/data/ipo-info
+Get recent IPO / new share subscription info.
+
+### GET /api/v1/data/period-list
+Get available data periods supported by the connected QMT.
+
+Response:
+```json
+{"data": {"periods": ["tick", "1m", "5m", "15m", "30m", "1h", "1d", "1w", "1mon"]}}
+```
+
+### GET /api/v1/data/data-dir
+Get local xtquant data cache directory path.
+
+---
+
+## Local / Extended Data Endpoints
+
+### POST /api/v1/data/local-data
+Get locally cached market data without triggering download.
+
+Request body:
+```json
+{
+  "stock_codes": ["000001.SZ"],
+  "start_time": "20240101",
+  "end_time": "20240331",
+  "period": "1d",
+  "fields": null,
+  "adjust_type": "none"
+}
+```
+
+### POST /api/v1/data/full-tick
+Get full tick snapshot data (all fields).
+
+Request body:
+```json
+{"stock_codes": ["000001.SZ"], "start_time": "", "end_time": ""}
+```
+
+Response includes: `last_price`, `open`, `high`, `low`, `amount`, `volume`, `ask_price[5]`, `bid_price[5]`, `ask_vol[5]`, `bid_vol[5]`, `transaction_num`, etc.
+
+### POST /api/v1/data/divid-factors
+Get dividend/split adjustment factors.
+
+Request body:
+```json
+{"stock_code": "000001.SZ"}
+```
+
+Response fields per record: `time`, `interest`, `stock_bonus`, `stock_gift`, `allot_num`, `allot_price`, `gugai`, `dr`
+
+### POST /api/v1/data/full-kline
+Get full K-line data including dividend info.
+
+Request body:
+```json
+{
+  "stock_codes": ["000001.SZ"],
+  "start_time": "20240101",
+  "end_time": "20240331",
+  "period": "1d",
+  "fields": null,
+  "adjust_type": "none"
+}
+```
+
+---
+
+## Data Download Endpoints
+
+### POST /api/v1/data/download/history-data
+Download historical K-line data for a single stock.
+
+Request body:
+```json
+{
+  "stock_code": "000001.SZ",
+  "period": "1d",
+  "start_time": "20230101",
+  "end_time": "20231231",
+  "incrementally": true
+}
+```
+
+- `incrementally`: true = only download missing data (recommended)
+
+### POST /api/v1/data/download/history-data-batch
+Batch download historical data for multiple stocks.
+
+Request body:
+```json
+{
+  "stock_list": ["000001.SZ", "600000.SH"],
+  "period": "1d",
+  "start_time": "20230101",
+  "end_time": "20231231"
+}
+```
+
+### POST /api/v1/data/download/financial-data
+Download financial statement data.
+
+Request body:
+```json
+{
+  "stock_list": ["000001.SZ"],
+  "table_list": ["Balance", "Income"],
+  "start_date": "20230101",
+  "end_date": "20231231"
+}
+```
+
+### POST /api/v1/data/download/financial-data-batch
+Batch download financial data (with optional callback).
+
+### POST /api/v1/data/download/sector-data
+Download and update sector/index constituent data.
+
+### POST /api/v1/data/download/index-weight
+Download index constituent weights.
+
+Request body:
+```json
+{"index_code": "000300.SH"}
+```
+Leave `index_code` null to download all indices.
+
+### POST /api/v1/data/download/cb-data
+Download convertible bond basic info.
+
+### POST /api/v1/data/download/etf-info
+Download ETF creation/redemption basket data.
+
+### POST /api/v1/data/download/holiday-data
+Download/update holiday calendar data.
+
+### POST /api/v1/data/download/history-contracts
+Download historical contract info (futures).
+
+Request body:
+```json
+{"market": "CFFEX"}
+```
+
+---
+
+## Sector Management Endpoints
+
+### POST /api/v1/data/sector/create-folder
+Create a sector folder node.
+
+Query params: `parent_node` (str, default ""), `folder_name` (str)
+
+### POST /api/v1/data/sector/create
+Create a custom sector.
+
+Request body:
+```json
+{"parent_node": "", "sector_name": "我的策略股池", "overwrite": true}
+```
+
+### POST /api/v1/data/sector/add-stocks
+Add stocks to a sector.
+
+Request body:
+```json
+{"sector_name": "我的策略股池", "stock_list": ["000001.SZ", "600000.SH"]}
+```
+
+### POST /api/v1/data/sector/remove-stocks
+Remove stocks from a sector.
+
+Request body:
+```json
+{"sector_name": "我的策略股池", "stock_list": ["000001.SZ"]}
+```
+
+### POST /api/v1/data/sector/remove
+Delete a custom sector.
+
+Query param: `sector_name` (str)
+
+### POST /api/v1/data/sector/reset
+Reset (replace) sector constituent stocks.
+
+Request body:
+```json
+{"sector_name": "我的策略股池", "stock_list": ["600000.SH", "600519.SH"]}
+```
+
+---
+
+## Level2 Data Endpoints
+
+### POST /api/v1/data/l2/quote
+Get Level2 snapshot data (10-level order book).
+
+Request body:
+```json
+{"stock_codes": ["000001.SZ"], "start_time": "", "end_time": ""}
+```
+
+Response fields: `time`, `last_price`, `open`, `high`, `low`, `amount`, `volume`, `ask_price[10]`, `bid_price[10]`, `ask_vol[10]`, `bid_vol[10]`, `pe`, `settlement_price`, etc.
+
+### POST /api/v1/data/l2/order
+Get Level2 tick-by-tick order data.
+
+Request body:
+```json
+{"stock_codes": ["000001.SZ"], "start_time": "", "end_time": ""}
+```
+
+Response fields: `time`, `price`, `volume`, `entrust_no`, `entrust_type`, `entrust_direction`
+
+### POST /api/v1/data/l2/transaction
+Get Level2 tick-by-tick transaction data.
+
+Request body:
+```json
+{"stock_codes": ["000001.SZ"], "start_time": "", "end_time": ""}
+```
+
+Response fields: `time`, `price`, `volume`, `amount`, `trade_index`, `buy_no`, `sell_no`, `trade_type`, `trade_flag`
+
+---
+
+## Quote Subscription Endpoints
+
+### POST /api/v1/data/subscription
+Create a quote subscription.
+
+Request body:
+```json
+{
+  "symbols": ["000001.SZ", "600000.SH"],
+  "period": "tick",
+  "start_date": "",
+  "adjust_type": "none",
+  "subscription_type": "quote"
+}
+```
+
+Fields:
+- `symbols`: non-empty list of stock codes
+- `period`: data period (default `tick`)
+- `adjust_type`: `none` | `front` | `back` | `front_ratio` | `back_ratio`
+- `subscription_type`: `quote` (single-stock) | `whole_quote` (full market push)
+
+Response:
+```json
+{
+  "subscription_id": "sub_abc123",
+  "status": "active",
+  "created_at": "2024-01-01T09:30:00",
+  "symbols": ["000001.SZ", "600000.SH"],
+  "period": "tick",
+  "subscription_type": "quote",
+  "message": "订阅创建成功"
+}
+```
+
+### GET /api/v1/data/subscription/{subscription_id}
+Get details of a specific subscription.
+
+Response: subscription info including `symbols`, `adjust_type`, `active`, `queue_size`, `last_heartbeat`
+
+### GET /api/v1/data/subscriptions
+List all active subscriptions.
+
+Response:
+```json
+{"subscriptions": [...], "total": 3}
+```
+
+### DELETE /api/v1/data/subscription/{subscription_id}
+Cancel a subscription.
+
+Response:
+```json
+{"success": true, "message": "订阅已取消", "subscription_id": "sub_abc123"}
+```
+
+---
+
+## Trading (`/api/v1/trading/`)
+
+### POST /api/v1/trading/connect
+Connect a trading account.
+
+Request body:
+```json
+{
+  "account_id": "1000000365",
+  "account_type": "STOCK",
+  "path": "D:/QMT/userdata_mini",
+  "session_id": 123456
+}
+```
+
+Response: `ConnectResponse` with `session_id` and `connected` status.
+
+### POST /api/v1/trading/disconnect/{session_id}
+Disconnect a trading session.
+
+### GET /api/v1/trading/account/{session_id}
+Get account information.
+
+### GET /api/v1/trading/positions/{session_id}
+Get position list.
+
+Response: `List[PositionInfo]` — `stock_code`, `volume`, `can_use_volume`, `avg_price`, `open_price`, `market_value`, `profit_rate`
+
+### POST /api/v1/trading/order/{session_id}
+Submit an order.
+
+Request body:
+```json
+{
+  "stock_code": "000001.SZ",
+  "order_type": "buy",
+  "price": 9.50,
+  "volume": 100,
+  "price_type": "LO"
+}
+```
+
+- `order_type`: `buy` | `sell`
+- `price_type`: `LO` (limit) | `MO` (market) | `AO` (auction)
+
+Response: `OrderResponse` with `order_id`, `status`, `message`
+
+### POST /api/v1/trading/cancel/{session_id}
+Cancel an order.
+
+Request body:
+```json
+{"order_id": "order_abc123"}
+```
+
+### GET /api/v1/trading/orders/{session_id}
+Get order list.
+
+### GET /api/v1/trading/trades/{session_id}
+Get trade/fill records.
+
+### GET /api/v1/trading/asset/{session_id}
+Get asset summary.
+
+Response: `AssetInfo` — `total_asset`, `cash`, `market_value`, `frozen_cash`, `profit`
+
+### GET /api/v1/trading/risk/{session_id}
+Get risk metrics.
+
+### GET /api/v1/trading/strategies/{session_id}
+Get strategy list.
+
+### GET /api/v1/trading/status/{session_id}
+Get connection status.
+
+Response:
+```json
+{"data": {"connected": true}}
+```
+
+---
+
+## WebSocket
+
+### WS /ws/quote/{subscription_id}
+Real-time quote streaming. Connect after creating a subscription via REST.
+
+Send (heartbeat):
+```json
+{"type": "ping"}
+```
+
+Receive (heartbeat response):
+```json
+{"type": "pong", "timestamp": "2024-01-01T09:30:00"}
+```
+
+Receive (quote data):
+```json
+{"type": "quote", "data": {...}, "timestamp": "2024-01-01T09:30:01"}
+```
+
+Receive (error):
+```json
+{"type": "error", "message": "..."}
+```
+
+### GET /ws/test
+Browser-based WebSocket debug page.
+
+---
+
+## Common Response Format
+
+All REST responses follow this envelope:
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "操作成功",
+  "data": { ... }
+}
+```
+
+Error response:
+```json
+{
+  "success": false,
+  "code": 500,
+  "message": "错误描述",
+  "data": null
+}
+```
+
+HTTP status codes:
+- 200: success
+- 400: bad request / validation error
+- 401: missing or invalid API key
+- 404: resource not found
+- 500: internal server error

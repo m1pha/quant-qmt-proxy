@@ -34,7 +34,7 @@ class RESTTestClient:
         self.client = httpx.Client(
             base_url=base_url,
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "X-API-Key": api_key,
                 "Content-Type": "application/json",
             },
             timeout=timeout

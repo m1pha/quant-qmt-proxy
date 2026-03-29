@@ -56,7 +56,7 @@ logs/
 .env.*.local
 
 # QMT related
-xtquant/
+# xtquant/
 data/
 userdata_mini/
 

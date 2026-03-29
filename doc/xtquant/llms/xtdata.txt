@@ -1,0 +1,228 @@
+﻿访问地址（替换 `{HOST}` 为实际域名或 IP）：
+- http://{HOST}/llms/xtdata.txt
+- http://{HOST}/llms/llms.txt
+- http://{HOST}/llms/xtquant_example.txt
+
+官方示例源：
+- https://dict.thinktrader.net/nativeApi/code_examples.html?id=M1Ku17
+
+本文档专注于 `xtquant.xtdata` 模块，提供行情数据获取、订阅、下载等接口的详细说明与示例。适用于量化交易策略开发。
+
+---
+
+## 一、模块概述
+
+`xtdata` 是 `xtquant` 库中负责行情数据的核心模块，支持：
+- 历史与实时 K线、分笔数据
+- 财务数据、合约基础信息
+- 板块分类、ETF 申赎、节假日等
+- 数据下载与订阅机制
+
+依赖 MiniQMT 客户端，确保数据一致性。
+
+## 二、核心概念
+
+- **stock_code**: 合约代码，如 `'000001.SZ'`（深圳）、`'600000.SH'`（上海）
+- **period**: 周期类型
+  - Level1: `'tick'`, `'1m'`, `'5m'`, `'15m'`, `'30m'`, `'1h'`, `'1d'`, `'1w'`, `'1mon'`, `'1q'`, `'1hy'`, `'1y'`
+  - Level2: `'l2quote'`, `'l2order'`, `'l2transaction'`, `'l2quoteaux'`, `'l2orderqueue'`, `'l2thousand'`
+  - 投研版特色: `'warehousereceipt'`, `'futureholderrank'`, `'interactiveqa'`, `'transactioncount1m'`, `'transactioncount1d'`, `'delistchangebond'`, `'replacechangebond'`, `'specialtreatment'`, `'northfinancechange1m'`, `'northfinancechange1d'`, `'dividendplaninfo'`, `'historycontract'`, `'optionhistorycontract'`, `'historymaincontract'`, `'stoppricedata'`, `'snapshotindex'`, `'stocklistchange'`, `'limitupperformance'`, `'announcement'`, `'hktstatistics'`, `'hktdetails'`, `'riskfreerate'`, `'etfstatistics'`, `'etfstatisticsl2'`
+- **时间范围**: `start_time`, `end_time`, `count`（-1 为全部，0 为不取历史）
+- **dividend_type**: 复权类型 `'none'`, `'front'`, `'back'`, `'front_ratio'`, `'back_ratio'`
+
+## 三、主要接口
+
+### 3.1 数据获取
+
+#### get_kline
+
+```python
+from xtquant import xtdata
+
+# 获取日线数据
+kline_data = xtdata.get_kline('000001.SZ', period='1d', count=100, dividend_type='none')
+# 返回: dict 或 list，包含时间、开高低收、成交量等字段
+print(kline_data)
+```
+
+#### get_full_kline
+
+```python
+# 获取最新交易日 K线数据（包括当日）
+full_kline = xtdata.get_full_kline('000001.SZ', period='1d', count=50)
+# 适用于需要包含最新数据的场景
+```
+
+#### get_market_data
+
+```python
+# 获取分笔数据
+tick_data = xtdata.get_market_data('000001.SZ', period='tick', count=500)
+# 返回分笔成交记录
+```
+
+#### get_instrument_detail
+
+```python
+# 获取合约基础信息
+detail = xtdata.get_instrument_detail('000001.SZ')
+# 返回合约名称、总股本、流通股本、交易所等
+print(detail)
+```
+
+#### get_stock_list_in_sector
+
+```python
+# 获取板块成份股
+stocks = xtdata.get_stock_list_in_sector('沪深300', real_timetag=True)
+# 返回板块内股票列表
+```
+
+### 3.2 数据下载
+
+#### download_history_data
+
+```python
+# 下载历史行情数据
+xtdata.download_history_data('000001.SZ', '1d', '20230101', '20231231', dividend_type='none')
+# 数据下载到本地缓存，用于后续 get_* 调用
+```
+
+#### download_history_data2
+
+```python
+# 新版下载，支持增量下载
+xtdata.download_history_data2('000001.SZ', '1d', '20230101', '20231231', incrementally=True)
+# incrementally=True 时，仅下载缺失部分
+```
+
+#### download_financial_data
+
+```python
+# 下载财务数据
+xtdata.download_financial_data('000001.SZ', '20230101', '20231231')
+# 包括资产负债表、利润表、现金流量表等
+```
+
+#### download_cb_data
+
+```python
+# 下载可转债基础信息
+xtdata.download_cb_data()
+# 获取可转债列表及基础信息
+```
+
+#### download_etf_info
+
+```python
+# 下载 ETF 申赎清单
+xtdata.download_etf_info()
+# 获取 ETF 申赎相关数据
+```
+
+#### download_holiday_data
+
+```python
+# 下载节假日数据
+xtdata.download_holiday_data()
+# 更新节假日信息
+```
+
+### 3.3 订阅与反订阅
+
+#### subscribe_quote
+
+```python
+def on_data(datas):
+    for code, data_list in datas.items():
+        print(f'{code}: {len(data_list)} 条数据')
+
+sub_id = xtdata.subscribe_quote('000001.SZ', period='1m', count=0, callback=on_data)
+# count=0 表示仅订阅实时，不取历史
+```
+
+#### subscribe_quote2
+
+```python
+# 订阅单股行情，支持除权参数
+sub_id2 = xtdata.subscribe_quote2('000001.SZ', period='1d', count=10, callback=on_data, dividend_type='front')
+# 与 subscribe_quote 相比，多一个 dividend_type 参数
+```
+
+#### unsubscribe_quote
+
+```python
+xtdata.unsubscribe_quote(sub_id)
+# 取消订阅
+```
+
+### 3.4 其他工具
+
+#### get_period_list
+
+```python
+periods = xtdata.get_period_list()
+# 返回支持的周期列表
+print(periods)
+```
+
+#### get_trading_dates
+
+```python
+dates = xtdata.get_trading_dates('20230101', '20231231')
+# 获取指定范围内的交易日
+```
+
+#### get_trading_calendar
+
+```python
+calendar = xtdata.get_trading_calendar(market='SH', start_date='20230101', end_date='20231231', tradetimes=True)
+# 获取交易日历及交易时段
+```
+
+#### get_holidays
+
+```python
+holidays = xtdata.get_holidays()
+# 获取节假日数据
+```
+
+## 四、使用建议
+
+- **数据准备**: 调用 `download_*` 接口确保数据完整后再用 `get_*` 获取。
+- **订阅管理**: 避免过多单股订阅，使用全推数据（`subscribe_whole_*`）以提高效率。
+- **复权处理**: 根据策略需求选择合适的 `dividend_type`。
+- **性能**: 大量数据请求时，合理设置 `count` 避免内存溢出。
+- **错误处理**: 检查返回数据是否为空，必要时重试或检查 MiniQMT 连接。
+
+## 五、示例：完整策略数据获取
+
+```python
+from xtquant import xtdata
+import pandas as pd
+
+# 1. 下载数据
+xtdata.download_history_data('000001.SZ', '1d', '20230101', '20231231')
+
+# 2. 获取并处理
+kline = xtdata.get_kline('000001.SZ', '1d', count=-1)
+df = pd.DataFrame(kline)
+df['date'] = pd.to_datetime(df['time'], unit='ms')
+df.set_index('date', inplace=True)
+
+# 3. 计算简单指标
+df['ma5'] = df['close'].rolling(5).mean()
+print(df.tail())
+
+# 4. 订阅实时数据
+def realtime_callback(datas):
+    print('实时数据:', datas)
+
+sub_id = xtdata.subscribe_quote('000001.SZ', '1m', count=0, callback=realtime_callback)
+# ... 策略逻辑 ...
+# xtdata.unsubscribe_quote(sub_id)
+```
+
+---
+
+此文档基于 `xtdata.md` 整理，建议结合官方文档使用。

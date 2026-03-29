@@ -1,0 +1,284 @@
+# quant-qmt-proxy — Trading Module
+
+This file covers the trading subsystem: account connection, order submission, order cancellation, and position/asset queries.
+
+See also: /llms/api.txt for full request/response schemas.
+
+---
+
+## Important Safety Notes
+
+- **dev mode**: All trading requests are intercepted and return mock order IDs. No real orders are placed.
+- **prod mode**: Real orders are submitted to QMT. Use with extreme caution.
+- **mock mode**: Returns simulated responses without connecting to QMT at all.
+
+Mode is controlled by `APP_MODE` environment variable.
+
+---
+
+## Trading Data Models
+
+### AccountInfo
+```json
+{
+  "account_id": "1000000365",
+  "account_type": "STOCK",
+  "status": "connected",
+  "session_id": "sess_abc123"
+}
+```
+
+### AssetInfo
+```json
+{
+  "total_asset": 1000000.0,
+  "cash": 500000.0,
+  "market_value": 500000.0,
+  "frozen_cash": 0.0,
+  "profit": 5000.0,
+  "profit_rate": 0.005
+}
+```
+
+### PositionInfo
+```json
+{
+  "stock_code": "000001.SZ",
+  "stock_name": "平安银行",
+  "volume": 1000,
+  "can_use_volume": 1000,
+  "avg_price": 9.50,
+  "open_price": 9.20,
+  "market_value": 9700.0,
+  "profit": 200.0,
+  "profit_rate": 0.021
+}
+```
+
+### OrderRequest
+```json
+{
+  "stock_code": "000001.SZ",
+  "order_type": "buy",
+  "price": 9.50,
+  "volume": 100,
+  "price_type": "LO"
+}
+```
+
+- `order_type`: `buy` | `sell`
+- `price_type`: `LO` (limit order, 限价), `MO` (market order, 市价), `AO` (auction order, 竞价)
+
+### OrderResponse
+```json
+{
+  "order_id": "order_abc123",
+  "stock_code": "000001.SZ",
+  "status": "submitted",
+  "message": "订单已提交"
+}
+```
+
+Order statuses: `submitted`, `filled`, `partial_filled`, `cancelled`, `rejected`
+
+### TradeInfo
+```json
+{
+  "trade_id": "trade_abc123",
+  "order_id": "order_abc123",
+  "stock_code": "000001.SZ",
+  "price": 9.50,
+  "volume": 100,
+  "amount": 950.0,
+  "trade_time": "2024-01-01T09:35:00"
+}
+```
+
+### RiskInfo
+```json
+{
+  "position_ratio": 0.5,
+  "max_drawdown": 0.05,
+  "daily_pnl": 1000.0,
+  "risk_level": "low"
+}
+```
+
+### ConnectRequest
+```json
+{
+  "account_id": "1000000365",
+  "account_type": "STOCK",
+  "path": "D:/QMT/userdata_mini",
+  "session_id": 123456
+}
+```
+
+- `account_type`: `STOCK` (股票) | `CREDIT` (信用) | `FUTURE` (期货)
+- `session_id`: unique integer per strategy session to avoid conflicts
+
+### ConnectResponse
+```json
+{
+  "session_id": "sess_abc123",
+  "connected": true,
+  "message": "连接成功"
+}
+```
+
+---
+
+## Trading Endpoints
+
+### POST /api/v1/trading/connect
+Connect a trading account to QMT.
+
+```json
+{
+  "account_id": "1000000365",
+  "account_type": "STOCK",
+  "path": "D:/QMT/userdata_mini",
+  "session_id": 123456
+}
+```
+
+In `dev` mode: returns a mock session without real connection.
+In `prod` mode: connects via `XtQuantTrader(path, session_id)`.
+
+### POST /api/v1/trading/disconnect/{session_id}
+Disconnect a session cleanly.
+
+### GET /api/v1/trading/status/{session_id}
+Check if a session is connected.
+
+```json
+{"data": {"connected": true}}
+```
+
+---
+
+## Account Queries
+
+### GET /api/v1/trading/account/{session_id}
+Get account metadata (account_id, type, status).
+
+### GET /api/v1/trading/asset/{session_id}
+Get asset summary (cash, total_asset, market_value, profit).
+
+### GET /api/v1/trading/positions/{session_id}
+Get current holdings.
+
+Returns: `List[PositionInfo]`
+
+### GET /api/v1/trading/orders/{session_id}
+Get today's order list.
+
+Returns: `List[OrderResponse]`
+
+### GET /api/v1/trading/trades/{session_id}
+Get today's fill/trade records.
+
+Returns: `List[TradeInfo]`
+
+### GET /api/v1/trading/risk/{session_id}
+Get risk metrics (position ratio, drawdown, daily P&L).
+
+### GET /api/v1/trading/strategies/{session_id}
+Get list of strategies registered in QMT for this session.
+
+---
+
+## Order Management
+
+### POST /api/v1/trading/order/{session_id}
+Submit a new order.
+
+```json
+{
+  "stock_code": "000001.SZ",
+  "order_type": "buy",
+  "price": 9.50,
+  "volume": 100,
+  "price_type": "LO"
+}
+```
+
+Notes:
+- Minimum volume is 100 shares (手, 1 lot = 100 shares) for A-share stocks
+- In `dev` mode, returns `mock_order_*` ID and does NOT place real order
+- In `prod` mode, submits real order via `xttrader.order_stock_sync()`
+
+### POST /api/v1/trading/cancel/{session_id}
+Cancel an existing order.
+
+```json
+{"order_id": "order_abc123"}
+```
+
+Returns:
+```json
+{"data": {"success": true}, "message": "撤销订单成功"}
+```
+
+---
+
+## Mode Behavior Summary
+
+| Action              | mock mode          | dev mode           | prod mode         |
+|---------------------|--------------------|--------------------|-------------------|
+| connect()           | Mock session       | Mock session       | Real XtQuantTrader |
+| query positions     | Mock data          | Real xttrader data | Real xttrader data |
+| query asset         | Mock data          | Real xttrader data | Real xttrader data |
+| submit order        | Mock order ID      | Intercepted (mock) | Real order placed |
+| cancel order        | Mock success       | Intercepted (mock) | Real cancellation |
+| order_id prefix     | `mock_order_*`     | `mock_order_*`     | Real order number |
+
+---
+
+## gRPC Trading API
+
+The following gRPC methods are available (defined in `proto/trading.proto`):
+
+- `Connect(ConnectRequest)` → `ConnectResponse`
+- `Disconnect(DisconnectRequest)` → `DisconnectResponse`
+- `GetAccountInfo(AccountRequest)` → `AccountInfo`
+- `GetPositions(PositionsRequest)` → `PositionsResponse`
+- `SubmitOrder(OrderRequest)` → `OrderResponse`
+- `CancelOrder(CancelOrderRequest)` → `CancelOrderResponse`
+- `GetOrders(OrdersRequest)` → `OrdersResponse`
+- `GetTrades(TradesRequest)` → `TradesResponse`
+- `GetAsset(AssetRequest)` → `AssetInfo`
+- `GetRiskInfo(RiskRequest)` → `RiskInfo`
+- `GetStrategies(StrategiesRequest)` → `StrategiesResponse`
+
+gRPC server: `{HOST_GRPC}`
+
+---
+
+## Usage Pattern
+
+```
+1. Connect account (once per session):
+   POST /api/v1/trading/connect
+   {"account_id":"1000000365","path":"D:/QMT/userdata_mini","session_id":1001}
+   → {"session_id": "sess_abc"}
+
+2. Query before trading:
+   GET /api/v1/trading/asset/{session_id}
+   GET /api/v1/trading/positions/{session_id}
+
+3. Submit order:
+   POST /api/v1/trading/order/{session_id}
+   {"stock_code":"000001.SZ","order_type":"buy","price":9.50,"volume":100,"price_type":"LO"}
+   → {"order_id": "order_xyz"}
+
+4. Monitor order status:
+   GET /api/v1/trading/orders/{session_id}
+
+5. Cancel if needed:
+   POST /api/v1/trading/cancel/{session_id}
+   {"order_id": "order_xyz"}
+
+6. Disconnect when done:
+   POST /api/v1/trading/disconnect/{session_id}
+```

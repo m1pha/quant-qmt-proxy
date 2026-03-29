@@ -1,0 +1,328 @@
+# quant-qmt-proxy — Market Data Module
+
+This file covers the market data subsystem: quote subscriptions, K-line fetching, tick data, Level2 data, and data downloads.
+
+See also: /llms/api.txt for request/response schemas.
+
+---
+
+## Data Models
+
+### PeriodType (enum)
+Period values accepted across all data endpoints:
+
+| Value  | Description      |
+|--------|------------------|
+| tick   | Tick/分笔 data   |
+| 1m     | 1-minute K-line  |
+| 5m     | 5-minute K-line  |
+| 15m    | 15-minute K-line |
+| 30m    | 30-minute K-line |
+| 1h     | Hourly K-line    |
+| 1d     | Daily K-line     |
+| 1w     | Weekly K-line    |
+| 1mon   | Monthly K-line   |
+| 1q     | Quarterly K-line |
+| 1hy    | Semi-annual      |
+| 1y     | Annual           |
+
+### adjust_type (dividend adjustment)
+- `none`        — No adjustment (raw price)
+- `front`       — Forward-adjusted (前复权)
+- `back`        — Backward-adjusted (后复权)
+- `front_ratio` — Forward ratio-adjusted (等比前复权)
+- `back_ratio`  — Backward ratio-adjusted (等比后复权)
+
+### MarketType (enum)
+`SH` (Shanghai), `SZ` (Shenzhen), `BJ` (Beijing), `FUTURES`, `OPTION`
+
+### Stock Code Format
+Pattern: `{code}.{exchange}`, e.g.:
+- `000001.SZ` — 平安银行 (Shenzhen)
+- `600000.SH` — 浦发银行 (Shanghai)
+- `000300.SH` — 沪深300 Index
+- `IC2403.CFE` — 中证500 Futures (CFFEX)
+
+---
+
+## Subscription System
+
+The subscription system is designed for real-time market data delivery:
+
+1. Create a subscription via `POST /api/v1/data/subscription` → get `subscription_id`
+2. Connect WebSocket at `ws://{HOST}/ws/quote/{subscription_id}` to receive streaming data
+3. Or use gRPC `SubscribeQuote()` for binary streaming
+4. Cancel via `DELETE /api/v1/data/subscription/{subscription_id}`
+
+### Subscription Types
+- `quote`       — Subscribe to specific stock list
+- `whole_quote` — Subscribe to full market push (SH+SZ all stocks, requires `whole_quote_enabled: true` in config)
+
+### Subscription Limits
+- Max subscriptions per instance: 100 (configurable in `config.yml`)
+- Queue size per subscription: 1000 messages (older data dropped on overflow)
+- Heartbeat timeout: 60 seconds
+
+### SubscriptionRequest fields
+```json
+{
+  "symbols": ["000001.SZ"],       // required, non-empty list
+  "period": "tick",               // default tick
+  "start_date": "",               // YYYYMMDD, empty = no history
+  "adjust_type": "none",          // dividend adjustment
+  "subscription_type": "quote"    // quote | whole_quote
+}
+```
+
+### SubscriptionInfoResponse fields
+```json
+{
+  "subscription_id": "sub_abc123",
+  "symbols": ["000001.SZ"],
+  "adjust_type": "none",
+  "subscription_type": "quote",
+  "created_at": "2024-01-01T09:30:00",
+  "last_heartbeat": "2024-01-01T09:35:00",
+  "active": true,
+  "queue_size": 0
+}
+```
+
+---
+
+## Market Data (MarketDataRequest)
+
+### GET K-line / Tick data
+`POST /api/v1/data/market`
+
+Use this to retrieve historical K-line or tick data. If data is not locally cached and `disable_download=false`, it will be auto-downloaded from QMT.
+
+Example — get daily K-line:
+```json
+{
+  "stock_codes": ["000001.SZ"],
+  "start_date": "20240101",
+  "end_date": "20240331",
+  "period": "1d",
+  "adjust_type": "front"
+}
+```
+
+### Response data fields (K-line)
+Each record in `data[]`:
+- `time` — Unix timestamp in milliseconds
+- `open`, `high`, `low`, `close` — OHLC prices
+- `volume` — traded shares
+- `amount` — traded amount (CNY)
+- `settlementPrice` — settlement price (futures)
+- `openInterest` — open interest (futures)
+
+### Response data fields (tick)
+- `time`, `last_price`, `open`, `high`, `low`, `last_close`
+- `volume`, `amount`, `pvolume` (pre-total volume)
+- `ask_price[5]`, `bid_price[5]`, `ask_vol[5]`, `bid_vol[5]`
+- `transaction_num`, `stock_status`, `open_int`
+
+---
+
+## Full Tick Data (FullTickRequest)
+
+`POST /api/v1/data/full-tick`
+
+Returns the latest real-time tick snapshot. Useful for current price and order book.
+
+```json
+{"stock_codes": ["000001.SZ", "600000.SH"]}
+```
+
+---
+
+## Dividend Adjustment Factors (DividFactorsRequest)
+
+`POST /api/v1/data/divid-factors`
+
+Returns historical dividend/split events for a stock.
+
+```json
+{"stock_code": "000001.SZ"}
+```
+
+Response fields per record:
+- `time` — dividend date
+- `interest` — cash dividend per share (before tax)
+- `stock_bonus` — bonus shares per share
+- `stock_gift` — capitalization shares per share
+- `allot_num` — rights offering shares per share
+- `allot_price` — rights offering price
+- `gugai` — whether it's a share reform (0/1)
+- `dr` — adjustment ratio
+
+---
+
+## Full K-line (FullKlineRequest)
+
+`POST /api/v1/data/full-kline`
+
+Returns K-line data including dividend info fields.
+
+```json
+{
+  "stock_codes": ["000001.SZ"],
+  "start_time": "20240101",
+  "end_time": "20240331",
+  "period": "1d",
+  "adjust_type": "none"
+}
+```
+
+---
+
+## Level2 Data
+
+Level2 data provides deeper market microstructure information. Requires Level2 data subscription from QMT.
+
+### L2 Quote Snapshot (10-level order book)
+`POST /api/v1/data/l2/quote`
+
+Response fields: `time`, `last_price`, `open`, `high`, `low`, `volume`, `amount`, `open_int`, `pe`, `settlement_price`, `ask_price[10]`, `bid_price[10]`, `ask_vol[10]`, `bid_vol[10]`, `transaction_num`, `stock_status`
+
+### L2 Order (Tick-by-Tick Orders)
+`POST /api/v1/data/l2/order`
+
+Response fields: `time`, `price`, `volume`, `entrust_no`, `entrust_type`, `entrust_direction`
+
+### L2 Transaction (Tick-by-Tick Trades)
+`POST /api/v1/data/l2/transaction`
+
+Response fields: `time`, `price`, `volume`, `amount`, `trade_index`, `buy_no`, `sell_no`, `trade_type`, `trade_flag`
+
+---
+
+## Data Downloads
+
+Data must be downloaded to local cache before it can be retrieved via `get_*` endpoints.
+
+### Download History Data
+`POST /api/v1/data/download/history-data`
+
+```json
+{
+  "stock_code": "000001.SZ",
+  "period": "1d",
+  "start_time": "20230101",
+  "end_time": "20231231",
+  "incrementally": true
+}
+```
+
+Tip: use `incrementally: true` to only fetch missing data segments.
+
+### Download History Data Batch
+`POST /api/v1/data/download/history-data-batch`
+
+```json
+{
+  "stock_list": ["000001.SZ", "600000.SH", "600519.SH"],
+  "period": "1d",
+  "start_time": "20230101",
+  "end_time": "20231231"
+}
+```
+
+### Download Financial Data
+`POST /api/v1/data/download/financial-data`
+
+```json
+{
+  "stock_list": ["000001.SZ"],
+  "table_list": ["Balance", "Income", "CashFlow"],
+  "start_date": "20230101",
+  "end_date": "20231231"
+}
+```
+
+Common `table_list` values: `Balance` (资产负债表), `Income` (利润表), `CashFlow` (现金流量表)
+
+### Other Download Endpoints
+- `POST /api/v1/data/download/sector-data` — sector/index constituent lists
+- `POST /api/v1/data/download/index-weight` — index constituent weights
+- `POST /api/v1/data/download/cb-data` — convertible bond basic info
+- `POST /api/v1/data/download/etf-info` — ETF creation/redemption basket
+- `POST /api/v1/data/download/holiday-data` — market holiday calendar
+- `POST /api/v1/data/download/history-contracts` — historical futures contracts
+
+---
+
+## Financial Data
+
+`POST /api/v1/data/financial`
+
+Retrieves locally cached financial statement data.
+
+```json
+{
+  "stock_codes": ["000001.SZ"],
+  "table_list": ["Balance"],
+  "start_date": "20230101",
+  "end_date": "20231231"
+}
+```
+
+---
+
+## Sector Management
+
+Custom sectors (自选股池) can be managed via the sector management endpoints.
+
+### Workflow
+1. Create folder: `POST /api/v1/data/sector/create-folder?folder_name=我的策略`
+2. Create sector: `POST /api/v1/data/sector/create` with `{"sector_name": "动量策略", "parent_node": "我的策略"}`
+3. Add stocks: `POST /api/v1/data/sector/add-stocks`
+4. Use sector: `POST /api/v1/data/sector` with `{"sector_name": "动量策略"}`
+5. Reset stocks: `POST /api/v1/data/sector/reset`
+6. Remove: `POST /api/v1/data/sector/remove?sector_name=动量策略`
+
+---
+
+## Instrument Info
+
+### GET /api/v1/data/instrument/{stock_code}
+Returns full contract info from xtquant.
+
+Key fields:
+- `ExchangeID` — market (SH/SZ/BJ/CFE/...)
+- `InstrumentID` — code without exchange suffix
+- `InstrumentName` — full name
+- `PreClose` — previous close price
+- `UpStopPrice` / `DownStopPrice` — daily limit prices
+- `FloatVolume` — tradeable shares
+- `TotalVolume` — total shares issued
+- `IsTrading` — whether currently tradeable
+- `ExpireDate` — expiry date (futures/options)
+- `PriceTick` — minimum price movement
+- `VolumeMultiple` — contract multiplier (futures)
+
+### GET /api/v1/data/instrument-type/{stock_code}
+Returns boolean flags: `stock`, `index`, `fund`, `etf`, `bond`, `option`, `futures`
+
+---
+
+## Usage Pattern (Recommended)
+
+```
+1. Download data first:
+   POST /api/v1/data/download/history-data  {"stock_code":"000001.SZ","period":"1d","incrementally":true}
+
+2. Retrieve historical data:
+   POST /api/v1/data/market  {"stock_codes":["000001.SZ"],"period":"1d","start_date":"20240101"}
+
+3. Create real-time subscription:
+   POST /api/v1/data/subscription  {"symbols":["000001.SZ"],"period":"tick"}
+   → get subscription_id
+
+4. Connect WebSocket for streaming:
+   ws://{HOST}/ws/quote/{subscription_id}
+
+5. Cancel when done:
+   DELETE /api/v1/data/subscription/{subscription_id}
+```

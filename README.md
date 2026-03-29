@@ -34,10 +34,11 @@
 - 🔒 **异常保护**: 全局异常处理，xtdata 连接超时保护
 
 ### 📊 功能完整
-- 📈 **市场数据**: K线、分时、tick、财务数据、板块数据、行情订阅
+- 📈 **市场数据**: K线、分时、tick、L2 数据、财务数据、板块数据、行情订阅
 - 💼 **交易功能**: 下单、撤单、持仓查询、订单管理
 - ❤️ **健康检查**: REST 和 gRPC 双协议健康检查
 - 🎯 **三种模式**: mock/dev/prod 灵活切换
+- 📖 **LLMs 文档**: 遵循 llmstxt.org 规范，服务启动后自动暴露
 
 ### ⚙️ 配置灵活
 - 📋 **统一配置**: config.yml 集中管理所有配置
@@ -63,7 +64,8 @@ quant-qmt-proxy/
 │   │   ├── data.py             # 数据服务 API
 │   │   ├── trading.py          # 交易服务 API
 │   │   ├── health.py           # 健康检查 API
-│   │   └── websocket.py        # WebSocket 行情推送
+│   │   ├── websocket.py        # WebSocket 行情推送
+│   │   └── llms.py             # LLMs 文档路由 (/llms/)
 │   ├── grpc_services/          # gRPC 服务实现
 │   │   ├── data_grpc_service.py      # 数据服务 gRPC
 │   │   ├── trading_grpc_service.py   # 交易服务 gRPC
@@ -96,6 +98,13 @@ quant-qmt-proxy/
 │       ├── test_data_grpc_service.py
 │       ├── test_trading_grpc_service.py
 │       └── test_health_grpc_service.py
+├── doc/
+│   └── quant-qmt-proxy/
+│       └── llms/               # LLMs 规范文档
+│           ├── llms.txt        # 项目概览与快速上手索引
+│           ├── api.txt         # 完整 REST API 参考
+│           ├── data.txt        # 行情数据模块说明
+│           └── trading.txt     # 交易模块说明
 ├── xtquant/                    # xtquant SDK（国金 QMT）请自行下载
 ├── scripts/                    # 工具脚本
 │   └── generate_proto.py       # protobuf 代码生成脚本
@@ -185,6 +194,7 @@ $env:APP_MODE="prod"; python run.py
 | **ReDoc** | http://localhost:8000/redoc | API 文档（阅读友好） |
 | **健康检查** | http://localhost:8000/health/ | 服务健康状态 |
 | **WebSocket 测试页** | http://localhost:8000/ws/test | 行情推送调试页面 |
+| **LLMs 文档** | http://localhost:8000/llms/ | 接口说明文档（llmstxt.org 规范） |
 
 ### 6. 运行测试
 
@@ -241,17 +251,62 @@ pytest tests/ -v
 ### REST API 接口
 
 #### 数据服务 (`/api/v1/data/`)
-- `POST /api/v1/data/market` - 获取市场行情数据
-- `POST /api/v1/data/financial` - 获取财务数据
+
+**基础信息**
+- `GET /api/v1/data/instrument/{stock_code}` - 获取合约详情（含涨跌停、股本等完整字段）
+- `GET /api/v1/data/instrument-type/{stock_code}` - 获取合约类型标记（股票/基金/期货等）
+- `GET /api/v1/data/trading-calendar/{year}` - 获取交易日历
+- `GET /api/v1/data/holidays` - 获取节假日列表
+- `GET /api/v1/data/period-list` - 获取可用数据周期
+- `GET /api/v1/data/data-dir` - 获取本地数据缓存路径
+- `GET /api/v1/data/convertible-bonds` - 获取可转债基础信息
+- `GET /api/v1/data/ipo-info` - 获取新股申购信息
+- `GET /api/v1/data/etf/{etf_code}` - 获取 ETF 基础信息
+
+**行情数据**
+- `POST /api/v1/data/market` - 获取市场行情数据（K线/tick，支持复权）
+- `POST /api/v1/data/local-data` - 获取本地缓存行情数据（不触发下载）
+- `POST /api/v1/data/full-tick` - 获取实时全量 tick 快照
+- `POST /api/v1/data/full-kline` - 获取含除权信息的完整 K 线
+- `POST /api/v1/data/divid-factors` - 获取除权除息调整因子
+
+**财务数据**
+- `POST /api/v1/data/financial` - 获取财务报表数据
+
+**板块/指数**
 - `GET /api/v1/data/sectors` - 获取板块列表
 - `POST /api/v1/data/sector` - 获取板块成分股
-- `POST /api/v1/data/index-weight` - 获取指数权重
-- `GET /api/v1/data/trading-calendar/{year}` - 获取交易日历
-- `GET /api/v1/data/instrument/{stock_code}` - 获取合约信息
-- `GET /api/v1/data/etf/{etf_code}` - 获取 ETF 基础信息
-- `POST /api/v1/data/subscription` - 创建行情订阅（支持前复权/后复权）
+- `POST /api/v1/data/index-weight` - 获取指数成分权重
+
+**Level2 数据**
+- `POST /api/v1/data/l2/quote` - 获取 L2 十档快照
+- `POST /api/v1/data/l2/order` - 获取 L2 逐笔委托
+- `POST /api/v1/data/l2/transaction` - 获取 L2 逐笔成交
+
+**数据下载**
+- `POST /api/v1/data/download/history-data` - 下载单股历史数据（支持增量）
+- `POST /api/v1/data/download/history-data-batch` - 批量下载历史数据
+- `POST /api/v1/data/download/financial-data` - 下载财务数据
+- `POST /api/v1/data/download/financial-data-batch` - 批量下载财务数据
+- `POST /api/v1/data/download/sector-data` - 下载板块数据
+- `POST /api/v1/data/download/index-weight` - 下载指数权重
+- `POST /api/v1/data/download/cb-data` - 下载可转债数据
+- `POST /api/v1/data/download/etf-info` - 下载 ETF 申赎数据
+- `POST /api/v1/data/download/holiday-data` - 下载节假日数据
+- `POST /api/v1/data/download/history-contracts` - 下载历史合约数据
+
+**板块管理**
+- `POST /api/v1/data/sector/create-folder` - 创建板块目录
+- `POST /api/v1/data/sector/create` - 创建自定义板块
+- `POST /api/v1/data/sector/add-stocks` - 添加成分股
+- `POST /api/v1/data/sector/remove-stocks` - 移除成分股
+- `POST /api/v1/data/sector/remove` - 删除板块
+- `POST /api/v1/data/sector/reset` - 重置板块成分股
+
+**行情订阅**
+- `POST /api/v1/data/subscription` - 创建行情订阅（支持复权类型）
 - `GET /api/v1/data/subscription/{subscription_id}` - 查询订阅详情
-- `GET /api/v1/data/subscriptions` - 获取订阅列表
+- `GET /api/v1/data/subscriptions` - 获取全部订阅列表
 - `DELETE /api/v1/data/subscription/{subscription_id}` - 取消订阅
 
 #### 交易服务 (`/api/v1/trading/`)
@@ -310,12 +365,18 @@ pytest tests/ -v
 - `GET /ws/quote/{subscription_id}` - 行情订阅推送，支持 `ping/pong` 心跳
 - `GET /ws/test` - 内置测试页面，可浏览器直接调试订阅
 
-> **✨ 行情订阅特性**: 
-> - 支持多股票同时订阅
-> - 支持复权类型选择（none/front/back）
-> - 自动队列管理，防止内存溢出
+> **✨ 行情订阅特性**:
+> - 支持多股票同时订阅及全推订阅（whole_quote）
+> - 支持复权类型选择（none/front/back/front_ratio/back_ratio）
+> - 自动队列管理，防止内存溢出（队列满时丢弃旧数据）
 > - gRPC 流式推送，低延迟高吞吐
-> - WebSocket 实时推送，内置心跳与重连
+> - WebSocket 实时推送，内置 ping/pong 心跳与重连
+
+### LLMs 文档 (`/llms/`)
+- `GET /llms/` - 项目概览与快速上手（llmstxt.org 规范索引）
+- `GET /llms/api.txt` - 完整 REST API 参考
+- `GET /llms/data.txt` - 行情数据模块详细说明
+- `GET /llms/trading.txt` - 交易模块详细说明
 
 ---
 
@@ -376,65 +437,77 @@ pytest tests/ -v
 
 ### 已实现功能 ✅
 
-> **💡 接口覆盖率**: 20/125+ ≈ 16% | **✨ 最新更新**: gRPC 行情订阅完整实现
+> **💡 接口覆盖率**: 40+/125+ ≈ 32% | **✨ 最新更新**: Level2 数据、数据下载、板块管理、LLMs 文档路由完整实现
 
-#### 数据模块 (14/50+)
-- ✅ 市场数据获取（K线、分时、tick）
+#### 数据模块 (28/50+)
+- ✅ 市场数据获取（K线、分时、tick，支持所有复权类型）
+- ✅ 本地数据获取（local-data，不触发下载）
+- ✅ 全量 tick 快照（full-tick）
+- ✅ 含除权的完整 K 线（full-kline）
+- ✅ 除权除息调整因子（divid-factors）
 - ✅ 财务数据查询
-- ✅ 板块数据管理
+- ✅ 板块列表与成分股查询
 - ✅ 指数权重查询
 - ✅ 交易日历查询
-- ✅ 合约信息查询
-- ✅ ETF 信息查询（占位）
+- ✅ 合约详情查询（完整字段）
+- ✅ 合约类型标记查询
+- ✅ 节假日查询
+- ✅ 可转债信息查询
+- ✅ 新股申购信息查询
+- ✅ 可用周期列表查询
+- ✅ ETF 信息查询
+- ✅ 数据路径查询
+- ✅ Level2 十档快照
+- ✅ Level2 逐笔委托
+- ✅ Level2 逐笔成交
+- ✅ 历史数据下载（单股/批量/增量）
+- ✅ 财务数据下载（单股/批量）
+- ✅ 板块/指数权重/可转债/ETF/节假日/历史合约数据下载
+- ✅ 板块管理（创建/添加/移除/重置/删除）
 - ✅ 行情订阅管理（REST API 完整实现）
 - ✅ gRPC 行情订阅（流式推送，支持复权）
 - ✅ WebSocket 行情推送（实时数据，心跳保活）
 - ✅ 订阅队列管理（惰性初始化，防溢出）
-- ✅ 空标的校验（多层验证）
-- ✅ 复权参数透传（前复权/后复权）
-- ✅ 事件循环自动管理（gRPC 线程安全）
 
 #### 交易模块 (6/60+)
 - ✅ 账户连接管理
 - ✅ 下单/撤单
 - ✅ 持仓查询
 - ✅ 订单查询
-- ✅ 交易模式拦截
-- ✅ 资产/风险/策略查询（mock 数据）
+- ✅ 交易模式拦截（dev 模式保护）
+- ✅ 资产/风险/策略查询
 
 #### 系统模块
-- ✅ 配置管理（单例模式）
-- ✅ 日志系统（Loguru，结构化日志）
+- ✅ 配置管理（单例模式，YAML + 环境变量）
+- ✅ 日志系统（Loguru，结构化日志，自动轮转）
 - ✅ 健康检查（REST + gRPC）
-- ✅ API 认证（API Key）
+- ✅ API 认证（API Key，多环境配置）
 - ✅ 异常处理（统一错误码映射）
 - ✅ 行情订阅管理（SubscriptionManager）
 - ✅ WebSocket 推送（心跳保活，限流控制）
 - ✅ 事件循环管理（gRPC 线程安全）
 - ✅ 队列管理（惰性初始化，自动溢出控制）
+- ✅ **LLMs 文档路由**（/llms/，遵循 llmstxt.org 规范）
 
 ### 待实现功能 🚧
 
 #### 高优先级 (P0)
-- 🔄 L2 行情数据接口（Level2 逐笔数据）
-- ❌ 资产查询接口（真实数据）
-- ❌ 成交查询接口（真实数据）
+- ❌ 资产/成交查询（真实 xttrader 数据对接）
 - ❌ 异步下单/撤单
 - ❌ 交易回调推送（WebSocket）
+- ❌ 行情订阅性能优化（批量订阅，减少 xtdata 调用）
 
 #### 中优先级 (P1)
-- ❌ 历史数据下载管理
-- ❌ 财务数据下载管理
-- ❌ 新股申购功能
-- ❌ 行情订阅性能优化（批量订阅）
-
-#### 低优先级 (P2)
+- ❌ 新股申购下单功能
 - ❌ 信用交易（融资融券）
 - ❌ 资金管理（银证转账）
-- ❌ 约券功能
-- ❌ 板块管理
 
-**当前进度**: 数据模块 14/50+，交易模块 6/60+，系统模块核心功能完成
+#### 低优先级 (P2)
+- ❌ 约券功能（SMT）
+- ❌ 智能算法下单（TWAP/VWAP）
+- ❌ 期货/期权专项接口
+
+**当前进度**: 数据模块 28/50+，交易模块 6/60+，系统模块核心功能完成
 
 ---
 
@@ -630,11 +703,27 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
+## 📖 LLMs 文档说明
+
+服务启动后，遵循 [llmstxt.org](https://llmstxt.org/) 规范的接口文档将自动暴露在：
+
+| 路径 | 内容 |
+|------|------|
+| `GET /llms/` | 项目概览与快速上手索引 |
+| `GET /llms/api.txt` | 完整 REST API 参考（所有端点、参数、响应格式） |
+| `GET /llms/data.txt` | 行情数据模块详细说明（订阅、K线、L2、下载） |
+| `GET /llms/trading.txt` | 交易模块详细说明（下单、撤单、持仓查询） |
+
+文档源文件位于 `doc/quant-qmt-proxy/llms/` 目录。
+
+---
+
 ## 🔗 相关链接
 
 - [FastAPI 官方文档](https://fastapi.tiangolo.com/)
 - [gRPC Python 文档](https://grpc.io/docs/languages/python/)
 - [Protocol Buffers 文档](https://developers.google.com/protocol-buffers)
+- [llmstxt.org 规范](https://llmstxt.org/)
 - [项目仓库](https://github.com/liqimore/quant-qmt-proxy)
 - [QMT 官方文档](https://dict.thinktrader.net/nativeApi/start_now.html)
 

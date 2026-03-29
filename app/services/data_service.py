@@ -270,6 +270,56 @@ class DataService:
         except Exception as e:
             raise DataServiceException(f"获取财务数据失败: {str(e)}")
     
+    def get_tabular_data(self, stock_code: str, table_name: str, start_time: str = '', end_time: str = '', 
+                        count: int = -1) -> List[Dict[str, Any]]:
+        """获取表格数据（通用接口，支持各类表格数据）"""
+        try:
+            if self._should_use_real_data():
+                try:
+                    # xtdata.get_tabular_data 用于获取各类表格数据
+                    data = xtdata.get_tabular_data(
+                        stock_code=stock_code,
+                        table_name=table_name,
+                        start_time=start_time,
+                        end_time=end_time,
+                        count=count
+                    )
+                    
+                    # 转换为标准格式
+                    if data is not None and hasattr(data, 'to_dict'):
+                        df_reset = data.reset_index()
+                        records = df_reset.to_dict('records')
+                        
+                        formatted_data = []
+                        for record in records:
+                            formatted_item = {}
+                            for key, value in record.items():
+                                if hasattr(value, 'item'):
+                                    formatted_item[key] = value.item()
+                                else:
+                                    formatted_item[key] = value
+                            formatted_data.append(formatted_item)
+                        
+                        return formatted_data
+                    else:
+                        return []
+                        
+                except Exception as e:
+                    logger.error(f"获取真实表格数据失败: {e}")
+                    raise DataServiceException(f"获取表格数据失败 [{stock_code}/{table_name}]: {str(e)}")
+            
+            # Mock数据
+            return [
+                {
+                    "date": "20240101",
+                    "value1": 1000000.0,
+                    "value2": 500000.0,
+                    "value3": 0.25
+                }
+            ]
+        except Exception as e:
+            raise DataServiceException(f"获取表格数据失败: {str(e)}")
+    
     def get_sector_list(self) -> List[SectorResponse]:
         """获取板块列表"""
         try:
