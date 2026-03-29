@@ -18,7 +18,7 @@ Official references:
 - Swagger UI:   http://{HOST}/docs
 - ReDoc:        http://{HOST}/redoc
 - QMT docs:     https://dict.thinktrader.net/nativeApi/start_now.html
-- Source repo:  https://github.com/liqimore/quant-qmt-proxy
+- Source repo:  https://github.com/m1pha/quant-qmt-proxy
 
 ---
 

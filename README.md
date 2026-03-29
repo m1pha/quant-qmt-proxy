@@ -674,7 +674,7 @@ Get-Content logs/error.log -Wait -Tail 50
 ### 开发环境设置
 ```bash
 # 克隆仓库
-git clone https://github.com/liqimore/quant-qmt-proxy.git
+git clone https://github.com/m1pha/quant-qmt-proxy.git
 cd quant-qmt-proxy
 
 # 安装依赖
@@ -724,15 +724,9 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - [gRPC Python 文档](https://grpc.io/docs/languages/python/)
 - [Protocol Buffers 文档](https://developers.google.com/protocol-buffers)
 - [llmstxt.org 规范](https://llmstxt.org/)
-- [项目仓库](https://github.com/liqimore/quant-qmt-proxy)
+- [项目仓库](https://github.com/m1pha/quant-qmt-proxy)
 - [QMT 官方文档](https://dict.thinktrader.net/nativeApi/start_now.html)
 
 ---
 
 <div align="center">
-
-**如果觉得项目有帮助，请给个 ⭐ Star 支持一下！**
-
-Made with ❤️ by [liqimore](https://github.com/liqimore)
-
-</div>
