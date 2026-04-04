@@ -183,7 +183,8 @@ class DataService:
                             for k, v in data.items():
                                 logger.debug(f"[{k}] 类型: {type(v)}, 形状: {v.shape if hasattr(v, 'shape') else 'N/A'}")
                                 if hasattr(v, "dtypes"):                                                                        
-                                    logger.debug(f"[{k}] dtypes: {str(v.dtypes).split('\n')[0]}")                                    
+                                    dtype_str = str(v.dtypes).split('\n')[0]
+                                    logger.debug(f"[{k}] dtypes: {dtype_str}")                                    
                                 if hasattr(v, 'head'):
                                     logger.debug(f"前几行:\n{v.head()}")
                         
