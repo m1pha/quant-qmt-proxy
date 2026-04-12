@@ -86,20 +86,21 @@ modes:
   prod:
     debug: false
     host: "0.0.0.0"
-    port: 8000
+    port: 1887
     log_level: "INFO"
     xtquant_mode: "prod"
     allow_real_trading: true
     connect_xtquant: true
     api_keys:
-      - "prod-api-key-001"
-      - "prod-api-key-002"
-    database:
-      url: "postgresql://user:password@localhost:5432/xtquant_proxy"
-    redis:
-      url: "redis://localhost:6379/0"
-    cors:
-      allow_origins: ["https://yourdomain.com"]
+      - "4C3IuBiiNwDML83v"
+      # - "prod-api-key-001"
+      # - "prod-api-key-002"
+    # database:
+    #   url: "postgresql://user:password@localhost:5432/xtquant_proxy"
+    # redis:
+      # url: "redis://localhost:6379/0"
+    # cors:
+    #   allow_origins: ["https://yourdomain.com"]
     # 生产环境可以关闭控制台输出，只输出到文件
     logging:
       console_output: false
